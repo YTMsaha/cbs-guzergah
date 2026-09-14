@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CBS Güzergah Aracı</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root{
+    --bg:#f5f5f5;
+    --header:#1f4e78;
+    --header-dark:#163a5a;
+    --green:#2e7d32;
+    --orange:#e67e22;
+    --red:#c0392b;
+    --gray:#6b7280;
+    --card:#ffffff;
+    --fiber:#2e7d32;
+    --bakir:#b45309;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:#222;overscroll-behavior:none;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+  header{background:var(--header);color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;z-index:1200;box-shadow:0 2px 6px rgba(0,0,0,.2);}
+  header h1{font-size:15px;margin:0;font-weight:600;}
+  header .lokal-badge{font-size:11px;background:rgba(255,255,255,.15);padding:4px 8px;border-radius:6px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  header button.icon-btn{background:none;border:none;color:#fff;font-size:18px;padding:4px 6px;cursor:pointer;}
+
+  #map{flex:1;position:relative;}
+
+  #toolbar{position:absolute;bottom:14px;left:0;right:0;display:flex;justify-content:center;gap:8px;z-index:1000;flex-wrap:wrap;padding:0 8px;pointer-events:none;}
+  #toolbar button{pointer-events:auto;}
+  .tbtn{background:var(--card);border:1px solid #d8d8d8;border-radius:10px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:58px;box-shadow:0 2px 5px rgba(0,0,0,.15);color:#222;}
+  .tbtn .ic{font-size:18px;}
+  .tbtn.active{background:var(--header);color:#fff;border-color:var(--header);}
+  .tbtn.export{background:var(--green);color:#fff;border-color:var(--green);}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:2000;}
+  .modal{background:var(--card);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:85vh;overflow-y:auto;}
+  .modal h2{font-size:16px;margin:0 0 12px;color:var(--header);}
+  .modal p.hint{font-size:12px;color:var(--gray);margin:-6px 0 12px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12px;color:#444;margin-bottom:4px;}
+  .field input[type=text], .field input[type=number], .field select{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;background:#fff;}
+  .chip-row{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{border:1px solid #ccc;border-radius:20px;padding:8px 14px;font-size:13px;background:#fff;color:#333;}
+  .chip.selected{background:var(--header);color:#fff;border-color:var(--header);}
+  .btn-row{display:flex;gap:10px;margin-top:16px;}
+  .btn{flex:1;padding:12px;border-radius:10px;border:none;font-size:14px;font-weight:600;}
+  .btn-primary{background:var(--green);color:#fff;}
+  .btn-secondary{background:#eee;color:#333;}
+  .btn-danger{background:var(--red);color:#fff;}
+
+  .leaflet-popup-content{font-size:13px;}
+  .popup-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .popup-actions button{border:none;border-radius:6px;padding:6px 9px;font-size:12px;color:#fff;}
+  .pa-move{background:var(--orange);}
+  .pa-box{background:var(--header);}
+  .pa-del{background:var(--red);}
+  .pa-cable{background:var(--fiber);}
+
+  .toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;z-index:3000;opacity:0;transition:opacity .25s;pointer-events:none;max-width:85%;text-align:center;}
+  .toast.show{opacity:1;}
+
+  .divicon-node{border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.4);}
+  .divicon-node.draft{opacity:.55;border:2px dashed #fff;}
+  .divicon-box{border-radius:4px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.4);}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <h1>CBS Güzergah Aracı</h1>
+      <div id="versionTag" style="font-size:10px;opacity:.75;">v-</div>
+    </div>
+    <div class="lokal-badge" id="lokalBadge">Lokal seçilmedi</div>
+    <button class="icon-btn" id="menuBtn" title="Oturum">⋮</button>
+  </header>
+  <div id="map"></div>
+  <div id="toolbar">
+    <button class="tbtn" data-mode="direk"><span class="ic">📍</span>Direk</button>
+    <button class="tbtn" data-mode="bina"><span class="ic">🏢</span>Bina N.</button>
+    <button class="tbtn" data-mode="cable"><span class="ic">〰️</span>Kablo</button>
+    <button class="tbtn export" id="exportBtn"><span class="ic">📤</span>KMZ</button>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  const STORAGE_KEY = "cbs_guzergah_session_v1";
+  const MAP_LAYER_PREF_KEY = "cbs_map_layer_pref_v1";
+  const CARTO_KEY_STORAGE = "cbs_map_carto_key_v1";
+  const DEFAULT_CARTO_KEY = "cb1_3imn_1_ccd1c9296d4059b57975ebf2";
+  const MAP_LAYERS = [
+    {id:'carto', name:'CARTO Voyager (kurumsal, önerilen)', needsKey:true, url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key={key}', attribution:'© OpenStreetMap katkıda bulunanlar © CARTO', subdomains:'abcd'},
+    {id:'esri_street', name:'Esri Sokak', needsKey:false, url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution:'Tiles © Esri'},
+    {id:'esri_sat', name:'Esri Uydu', needsKey:false, url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution:'Tiles © Esri'},
+    {id:'osm', name:'OpenStreetMap Standart', needsKey:false, url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attribution:'© OpenStreetMap katkıda bulunanlar', subdomains:'abc'}
+  ];
+  const CAP_KUTU_BAKIR = [10,20,30];
+  const CAP_SPLITTER_FIBER = ["1/8","1/16"];
+  const CAP_HAT_BAKIR = [10,20,30,50,100,150];
+  const CAP_HAT_FIBER = [{v:6,label:"6'lık"},{v:12,label:"12'lik"},{v:24,label:"24'lük"},{v:48,label:"48'lik"}];
+
+  const APP_VERSION = "1.6.0";
+  const CHANGELOG = [
+    {v:"1.6.0", d:"2026-09-11", notes:["Kurumsal CARTO API key uygulamaya gömülü varsayılan olarak eklendi — artık hiçbir kullanıcı elle key girmeden CARTO haritası otomatik çalışıyor ve varsayılan katman oldu","Esri ve OSM katmanları hâlâ alternatif olarak seçilebiliyor"]},
+    {v:"1.5.1", d:"2026-09-11", notes:["Haritaya 'Konumumu Göster' (📍) butonu eklendi — dokununca konum izni istenir (kapalıysa telefonun izin isteğini tetikler) ve haritayı o anki konuma odaklar"]},
+    {v:"1.5.0", d:"2026-09-11", notes:["Harita katmanı artık seçmeli: Esri Sokak, Esri Uydu, OpenStreetMap Standart, CARTO (kendi API key'inizle) arasından seçim yapılabiliyor (harita üstündeki 🗺️ butonundan)","CARTO seçilirse API key girme alanı açılıyor, key cihazda saklanıyor"]},
+    {v:"1.4.1", d:"2026-09-11", notes:["CARTO da ücretsiz katmanına API key zorunluluğu getirdiği için ('API KEY REQUIRED' filigranı) sokak katmanı, key gerektirmeyen Esri World Street Map'e geçirildi — uydu görünümüyle aynı sağlayıcı ailesi, önceden test edilen ve sorunsuz çalışan"]},
+    {v:"1.4.0", d:"2026-09-11", notes:["Lokal adı, direk/bina ismi, kutu/splitter adı ve santral/SD alanları artık otomatik büyük harfe çevriliyor","Fiber kablo kapasite etiketleri Türkçe kurallara uygun hale getirildi (6'lık, 12'lik, 24'lük, 48'lik)","Sokak katmanı, OpenStreetMap'in kendi sunucusundan (tile.openstreetmap.org) erişim engeli sorunları nedeniyle CARTO/OSM katmanına geçirildi"]},
+    {v:"1.3.0", d:"2026-09-11", notes:["Direk sıra no'su otomatik veriliyor (dilerseniz değiştirilebilir)","Konum onay adımı kaldırıldı — dokunma direkt yerleştiriyor, düzeltme 'Taşı' ile yapılıyor","Fiber kablo kapasiteleri 6/12/24/48 olarak ayrıldı (bakır: 10-150 aynı kaldı)","Fiber kutu artık 'Splitter' olarak adlandırılıyor, kapasite 1/8, 1/16, Diğer","İndirilen uygulama dosyasının adına da versiyon bilgisi eklendi"]},
+    {v:"1.2.1", d:"2026-09-11", notes:["Santral ve SD listeleri birbirinden bağımsız değerlendirilecek şekilde düzeltildi (otomatik eşleştirme kaldırıldı)","KMZ dosya adı sırası Santral-SD-Lokal-Tarih olacak şekilde sabitlendi (ileride yapılacak CBS kontrol PWA'sı için)"]},
+    {v:"1.2.0", d:"2026-09-11", notes:["Lokal tanımına Santral ve Saha Dolabı (SD) alanları eklendi (yazarken otomatik tamamlama)","Versiyon/günlük bilgisi standardı eklendi","Kutu için de konum düzenleme (Taşı) eklendi"]},
+    {v:"1.1.0", d:"2026-09-11", notes:["Tampon kutu desteği eklendi","Kablo kapasiteleri 10-150 aralığına göre yeniden sıralandı","Uydu/sokak görünümü geçiş butonu eklendi"]},
+    {v:"1.0.0", d:"2026-09-11", notes:["İlk sürüm: direk, bina noktası, kutu, kablo işaretleme ve KMZ dışa aktarma"]}
+  ];
+
+  const SANTRAL_SD_DATA = [{"s":"A.O.S.B.-4","sd":"110B"},{"s":"ABDİOĞLU-4","sd":"YENI"},{"s":"ADAPINARI-1","sd":"296B"},{"s":"AĞAÇ İŞLERİ-4","sd":"296"},{"s":"AKÇALUŞAĞI-4","sd":"33B"},{"s":"AKDAM-4","sd":"204"},{"s":"AKKAYA-4","sd":"26"},{"s":"AKPINAR-4","sd":"536"},{"s":"ALİ HOCALI-4","sd":"155"},{"s":"ALİFAKI-4","sd":"152"},{"s":"ASLANLI-4","sd":"133C"},{"s":"AYVACIK-4","sd":"21"},{"s":"AYVAT-4","sd":"120"},{"s":"BADEM GÜNEYİ-4","sd":"178"},{"s":"BAĞTEPE-4","sd":"5"},{"s":"BAHÇECİK-4","sd":"5C"},{"s":"BAHÇEKÖY-4","sd":"57"},{"s":"BAKLALI-4","sd":"188B"},{"s":"BALCALI-4","sd":"98"},{"s":"BAŞÖREN-1","sd":"16"},{"s":"BEBELİ-4","sd":"145B"},{"s":"BELEN-4","sd":"106"},{"s":"BELÖREN-4","sd":"10"},{"s":"BEYPINARI-4","sd":"221"},{"s":"BOTAŞ-1","sd":"170"},{"s":"BOZGÜNEY-4","sd":"64"},{"s":"BUCAK-4","sd":"29"},{"s":"BURUK-4","sd":"34"},{"s":"CEYHAN-1","sd":"8"},{"s":"CİHADİYE-4","sd":"81"},{"s":"CUMHURİYET-4","sd":"23"},{"s":"ÇAKIRÖREN-4","sd":"12"},{"s":"ÇAMDERE-4","sd":"HAMZALI"},{"s":"ÇANAKLI TOKİ","sd":"134"},{"s":"ÇANDIK-4","sd":"262"},{"s":"ÇANDIRLAR-4","sd":"265"},{"s":"ÇATALÇAM-4","sd":"133"},{"s":"ÇELEMLİ-4","sd":"171"},{"s":"ÇERALAN-4","sd":"52"},{"s":"ÇİÇEKLİ-4","sd":"63"},{"s":"ÇİFTLİKLER-1","sd":"533"},{"s":"ÇOTLU-4","sd":"6"},{"s":"ÇÜRÜKLÜ-4","sd":"49B"},{"s":"DAĞISTAN-1","sd":"108"},{"s":"DAMLAPINARI-4","sd":"176"},{"s":"DOĞANALANI-4","sd":"234"},{"s":"DOĞANBEYLİ-4","sd":"189"},{"s":"DOĞANKENT-4","sd":"135B"},{"s":"DOĞANLI-4","sd":"MERKEZSAHA"},{"s":"DOKUZTEKNE-1","sd":"13"},{"s":"DORUK-1","sd":"51"},{"s":"DURMUŞLU-4","sd":"55"},{"s":"DÜZAĞAÇ-4","sd":"171C"},{"s":"EĞECİUŞAĞI-4","sd":"3B"},{"s":"EĞRİAĞAÇ-4","sd":"27"},{"s":"ERGENUŞAĞI-4","sd":"BLK4"},{"s":"ESİRMEK-4","sd":"182"},{"s":"ESKİMANTAŞ-4","sd":"5B"},{"s":"FEKE-4","sd":"SKEC"},{"s":"GAZİKÖY-4","sd":"10B"},{"s":"GEDİKLİ-4","sd":"184"},{"s":"GÖBELLİ-4","sd":"125"},{"s":"GÖKÇELİ-4","sd":"190"},{"s":"GÖLOVASI-1","sd":"14B"},{"s":"GÜNERİ TOKİ","sd":"188"},{"s":"GÜNEŞLİ-4","sd":"250B"},{"s":"GÜVELOĞLU-4","sd":"12C"},{"s":"HAKKIBEYLİ-4","sd":"YUZBASI"},{"s":"HAMAMKÖY-4","sd":"236"},{"s":"HAMDİLLİ-1","sd":"17"},{"s":"HAVUTLU-4","sd":"209"},{"s":"HAYLAZLI-1","sd":"47"},{"s":"HİMMETLİ-4","sd":"151B"},{"s":"HOCALI-4","sd":"9"},{"s":"İNCİRLİK-4","sd":"93"},{"s":"İNNAPLIHÖYÜĞÜ-4","sd":"17B"},{"s":"İSALI-1","sd":"22B"},{"s":"KADIKÖY-4","sd":"242"},{"s":"KALDIRIM-1","sd":"61"},{"s":"KAMIŞLI-4","sd":"251"},{"s":"KANDİLLİ-4","sd":"18"},{"s":"KAPIKAYA-4","sd":"110"},{"s":"KARAHAMZALI-4","sd":"142"},{"s":"KARAKUYU-4","sd":"20B"},{"s":"KARATAŞ-4","sd":"242B"},{"s":"KARLIK-4","sd":"25C"},{"s":"KARSAVURAN-4","sd":"161"},{"s":"KARŞIYAKA-4","sd":"85"},{"s":"KAYARCIK-4","sd":"20"},{"s":"KESİK-4","sd":"179"},{"s":"KIBRISLAR-4","sd":"2B"},{"s":"KILIÇLI-4","sd":"94ASH"},{"s":"KISACIKLI-4","sd":"25B"},{"s":"KIVRIKLI-1","sd":"169B"},{"s":"KIZILAĞAÇ-4","sd":"174"},{"s":"KIZILDERE-1","sd":"29B"},{"s":"KIZILLAR-4","sd":"300"},{"s":"KIZILYER-4","sd":"3"},{"s":"KIZLARSEKİSİ-4","sd":"24B"},{"s":"KİRAZLIYURT-4","sd":"169"},{"s":"KİREMİTLİ-4","sd":"52B"},{"s":"KOZAN-4","sd":"50"},{"s":"KÖSRELİ-1","sd":"281"},{"s":"KURTKULAĞI-1","sd":"6B"},{"s":"KUZUCAK-1","sd":"64B"},{"s":"KUZUPINARI-1","sd":"15"},{"s":"KÜÇÜKBURHANİYE-1","sd":"235"},{"s":"MAHYALAR-4","sd":"208"},{"s":"MARANGEÇİLİ-4","sd":"101"},{"s":"MERCİMEK-1","sd":"31B"},{"s":"MUSTAFABEYLİ-1","sd":"281B"},{"s":"NARLIK-1","sd":"22"},{"s":"OPTİMUM AVM  SANT","sd":"143B"},{"s":"ORMANCIK-4","sd":"TIGEM"},{"s":"ORTAKÖY-4","sd":"135"},{"s":"ORUÇLU-4","sd":"89"},{"s":"PAŞALI-4","sd":"16B"},{"s":"PEKMEZCİ-4","sd":"18C"},{"s":"POSTKABASAKAL-4","sd":"208B"},{"s":"PROF.SİTESİ-4","sd":"253"},{"s":"PTT EVLERİ-4","sd":"526"},{"s":"RL_DAVUDIDAG","sd":"203"},{"s":"SAĞKAYA-1","sd":"280"},{"s":"SARIÇAM-4","sd":"131B"},{"s":"SARIMAZI-1","sd":"25"},{"s":"SEPİCİ","sd":"GURLESEN"},{"s":"SİRKELİ-1","sd":"88"},{"s":"SOFULU TOKİ","sd":"AVCIPINARI"},{"s":"SOYSALI-1","sd":"138"},{"s":"SUGÖZÜ-1","sd":"138B"},{"s":"SÜPHANDERE-4","sd":"14"},{"s":"ŞAHİNAĞA-4","sd":"11"},{"s":"ŞARKÖY-4","sd":"192"},{"s":"ŞEYHMURAT-4","sd":"4"},{"s":"TABAKLAR-4","sd":"49"},{"s":"TATARLI-1","sd":"154"},{"s":"TAVŞANTEPE TOKİ","sd":"154B"},{"s":"TAYSEB-1","sd":"89B"},{"s":"TEPECİKÖREN-4","sd":"54"},{"s":"TORTULU-4","sd":"539"},{"s":"TUFANBEYLİ-4","sd":"228"},{"s":"TUZLA-4","sd":"28B"},{"s":"YAKAPINAR-4","sd":"28"},{"s":"YALAK-1","sd":"307"},{"s":"YAMANLI-4","sd":"245"},{"s":"YASSIÖREN-4","sd":"163B"},{"s":"YEDİGÖZ-4","sd":"2"},{"s":"YEMİŞLİ-4","sd":"12B"},{"s":"YENİKENT-1","sd":"INCIRLI"},{"s":"YENİYAYLA-4","sd":"168"},{"s":"YEŞİLBAHÇE-1","sd":"127"},{"s":"YEŞİLDAM-1","sd":"99B"},{"s":"YEŞİLKÖY-1","sd":"24"},{"s":"YEŞİLOVA-1","sd":"101B"},{"s":"YİBO TOKİ","sd":"DOGANCAY"},{"s":"YUKARIGEÇİLİ-4","sd":"173"},{"s":"YUMURTALIK-1","sd":"31"},{"s":"YUNUSOĞLU-4","sd":"99"},{"s":"YÜKSEKÖREN-4","sd":"7"},{"s":"ZEYTİNBELİ-1","sd":"1"}];
+
+  let state = { lokalAdi:"", santralAdi:"", sahaDolabiNo:"", nodes:[], edges:[], nextId:1 };
+  let mode = null;           // 'direk' | 'bina' | 'cable'
+  let cableFirstNode = null; // kablo modunda seçilen ilk düğüm
+  let map, layerNodes, layerBoxes, layerEdges;
+  const markerIndex = {};    // nodeId -> leaflet marker
+  const boxMarkerIndex = {}; // nodeId -> leaflet marker
+  const edgeLineIndex = {};  // edgeId -> leaflet polyline
+
+  function uid(){ return "n" + (state.nextId++); }
+  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function toast(msg, ms){
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._h);
+    toast._h = setTimeout(()=>t.classList.remove('show'), ms||1800);
+  }
+
+  // ---------- Init ----------
+  function init(){
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if(saved){
+      try{ state = JSON.parse(saved); }catch(e){ state = {lokalAdi:"",santralAdi:"",sahaDolabiNo:"",nodes:[],edges:[],nextId:1}; }
+      if(typeof state.santralAdi !== 'string') state.santralAdi = "";
+      if(typeof state.sahaDolabiNo !== 'string') state.sahaDolabiNo = "";
+    }
+    setupMap();
+    document.getElementById('versionTag').textContent = "v" + APP_VERSION;
+    if(state.lokalAdi){
+      updateLokalBadge();
+      renderAll();
+    } else {
+      askLokalAdi(true);
+    }
+    bindToolbar();
+    document.getElementById('menuBtn').addEventListener('click', openSessionMenu);
+    document.getElementById('exportBtn').addEventListener('click', exportKMZ);
+  }
+
+  function setupMap(){
+    map = L.map('map', {zoomControl:true, tap:true}).setView([37.0, 35.3], 15);
+
+    let currentTileLayer = null;
+    function buildLayer(id, cartoKey){
+      const def = MAP_LAYERS.find(l=>l.id===id) || MAP_LAYERS[0];
+      let url = def.url;
+      if(id==='carto') url = url.replace('{key}', encodeURIComponent(cartoKey||''));
+      return L.tileLayer(url, { maxZoom: 20, subdomains: def.subdomains||'abc', attribution: def.attribution });
+    }
+    function applyLayer(id, cartoKey){
+      if(currentTileLayer) map.removeLayer(currentTileLayer);
+      currentTileLayer = buildLayer(id, cartoKey);
+      currentTileLayer.addTo(map);
+      localStorage.setItem(MAP_LAYER_PREF_KEY, id);
+      if(id==='carto') localStorage.setItem(CARTO_KEY_STORAGE, cartoKey||'');
+    }
+    const initialLayer = localStorage.getItem(MAP_LAYER_PREF_KEY) || 'carto';
+    const initialKey = localStorage.getItem(CARTO_KEY_STORAGE) || DEFAULT_CARTO_KEY;
+    applyLayer(initialLayer, initialKey);
+
+    const LayerToggle = L.Control.extend({
+      options:{position:'topright'},
+      onAdd: function(){
+        const div = L.DomUtil.create('div');
+        div.innerHTML = '<button id="layerToggleBtn" style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:16px;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer;">🗺️</button>';
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        setTimeout(()=>{
+          div.querySelector('#layerToggleBtn').addEventListener('click', function(){ openLayerPicker(applyLayer); });
+        },0);
+        return div;
+      }
+    });
+    map.addControl(new LayerToggle());
+
+    const locateMarkerHolder = {marker:null};
+    const LocateControl = L.Control.extend({
+      options:{position:'topright'},
+      onAdd: function(){
+        const div = L.DomUtil.create('div');
+        div.style.marginTop = '8px';
+        div.innerHTML = '<button id="locateBtn" style="background:#fff;border:1px solid #ccc;border-radius:8px;padding:8px 10px;font-size:16px;box-shadow:0 2px 5px rgba(0,0,0,.25);cursor:pointer;">📍</button>';
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        setTimeout(()=>{
+          div.querySelector('#locateBtn').addEventListener('click', function(){ locateMe(locateMarkerHolder); });
+        },0);
+        return div;
+      }
+    });
+    map.addControl(new LocateControl());
+
+    layerEdges = L.layerGroup().addTo(map);
+    layerNodes = L.layerGroup().addTo(map);
+    layerBoxes = L.layerGroup().addTo(map);
+
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(function(pos){
+        map.setView([pos.coords.latitude, pos.coords.longitude], 18);
+      }, function(){ /* konum reddedildi, varsayılan görünüm kalsın */ }, {enableHighAccuracy:true, timeout:8000});
+    }
+
+    map.on('click', onMapClick);
+  }
+
+  function locateMe(holder){
+    if(!navigator.geolocation){ toast("Bu cihaz/tarayıcı konum servisini desteklemiyor"); return; }
+    toast("Konum alınıyor...");
+    navigator.geolocation.getCurrentPosition(function(pos){
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      map.setView(ll, 18);
+      if(holder.marker) map.removeLayer(holder.marker);
+      const icon = L.divIcon({
+        className:'', html:'<div style="width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px #1a73e8;"></div>',
+        iconSize:[16,16], iconAnchor:[8,8]
+      });
+      holder.marker = L.marker(ll, {icon, interactive:false}).addTo(map);
+      toast("Konumunuz gösteriliyor");
+    }, function(err){
+      if(err.code === 1){
+        toast("Konum izni kapalı. Tarayıcınızın/telefonunuzun konum ayarlarından bu sayfa için izin vermeniz gerekiyor.", 4000);
+      } else {
+        toast("Konum alınamadı, tekrar deneyin.");
+      }
+    }, {enableHighAccuracy:true, timeout:10000});
+  }
+
+  function updateLokalBadge(){
+    let txt = state.lokalAdi ? ("📍 " + state.lokalAdi) : "Lokal seçilmedi";
+    if(state.santralAdi) txt += " · " + state.santralAdi;
+    if(state.sahaDolabiNo) txt += " / SD" + state.sahaDolabiNo;
+    document.getElementById('lokalBadge').textContent = txt;
+    const vt = document.getElementById('versionTag');
+    if(vt) vt.textContent = "v" + APP_VERSION;
+  }
+
+  // ---------- Toolbar / mode ----------
+  function bindToolbar(){
+    document.querySelectorAll('.tbtn[data-mode]').forEach(btn=>{
+      btn.addEventListener('click', function(){
+        const m = btn.getAttribute('data-mode');
+        if(mode === m){ setMode(null); } else { setMode(m); }
+      });
+    });
+  }
+  function setMode(m){
+    cableFirstNode = null;
+    mode = m;
+    document.querySelectorAll('.tbtn[data-mode]').forEach(b=>{
+      b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+    });
+    if(mode === 'direk') toast("Haritada dokunarak direk yerleştirin");
+    if(mode === 'bina') toast("Haritada dokunarak bina noktası (blok işleme) yerleştirin");
+    if(mode === 'cable') toast("Kabloyu bağlayacağınız ilk noktaya dokunun");
+    clearHighlights();
+  }
+
+  function clearHighlights(){
+    Object.values(markerIndex).forEach(mk=>{
+      const el = mk.getElement();
+      if(el) el.style.outline = "";
+    });
+  }
+
+  // ---------- Map click ----------
+  function onMapClick(e){
+    if(mode === 'direk' || mode === 'bina'){
+      placeNode(e.latlng, mode);
+    }
+    // cable modunda düğüme değil boş alana dokunulursa hiçbir şey yapma
+  }
+
+  function nextDirekNo(){
+    const count = state.nodes.filter(n=>n.type==='direk').length;
+    return String(count + 1);
+  }
+
+  function placeNode(latlng, type){
+    const node = { id: uid(), type, lat: latlng.lat, lng: latlng.lng, label: type==='direk' ? nextDirekNo() : "", box:null };
+    state.nodes.push(node);
+    save();
+    renderNode(node);
+    openNodeForm(node, true);
+  }
+
+  // ---------- Node form ----------
+  function openNodeForm(node, isNew){
+    const overlay = buildOverlay(`
+      <h2>${node.type==='direk'?'Direk Bilgisi':'Bina Noktası Bilgisi'}</h2>
+      <div class="field">
+        <label>${node.type==='direk'?'Sıra No':'İsim'} ${node.type==='direk'?'(otomatik verildi, dilerseniz değiştirin)':'(opsiyonel)'}</label>
+        <input type="text" id="nf-label" value="${escapeHtml(node.label||'')}" placeholder="${node.type==='direk'?'Örn: 14':'Örn: Bina cephesi 2'}">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="nf-cancel">Kapat</button>
+        <button class="btn btn-primary" id="nf-save">Kaydet</button>
+      </div>
+    `);
+    overlay.querySelector('#nf-cancel').onclick = ()=> closeOverlay(overlay);
+    attachUppercase(overlay.querySelector('#nf-label'));
+    overlay.querySelector('#nf-save').onclick = ()=>{
+      node.label = overlay.querySelector('#nf-label').value.trim();
+      save(); renderNode(node);
+      closeOverlay(overlay);
+      toast("Kaydedildi");
+    };
+  }
+
+  // ---------- Rendering ----------
+  function renderAll(){
+    layerNodes.clearLayers(); layerBoxes.clearLayers(); layerEdges.clearLayers();
+    for(const k in markerIndex) delete markerIndex[k];
+    for(const k in boxMarkerIndex) delete boxMarkerIndex[k];
+    for(const k in edgeLineIndex) delete edgeLineIndex[k];
+    state.nodes.forEach(renderNode);
+    state.edges.forEach(renderEdge);
+  }
+
+  function nodeColor(type){ return type==='direk' ? '#1f4e78' : '#7c4a1e'; }
+
+  function renderNode(node){
+    if(markerIndex[node.id]) map.removeLayer(markerIndex[node.id]);
+    const icon = L.divIcon({
+      className:'',
+      html:`<div class="divicon-node" style="width:24px;height:24px;background:${nodeColor(node.type)}">${node.type==='direk'?'📍':'🏢'}</div>`,
+      iconSize:[24,24], iconAnchor:[12,12]
+    });
+    const marker = L.marker([node.lat, node.lng], {icon, draggable:false}).addTo(layerNodes);
+    marker.bindPopup(nodePopupHtml(node));
+    marker.on('popupopen', ()=>bindNodePopupActions(node, marker));
+    marker.on('click', ()=> onNodeClicked(node, marker));
+    markerIndex[node.id] = marker;
+    if(node.box) renderBox(node);
+  }
+
+  function nodePopupHtml(node){
+    const title = (node.type==='direk'?'Direk':'Bina Noktası') + (node.label? " — "+escapeHtml(node.label):"");
+    return `<b>${title}</b>
+      <div class="popup-actions">
+        <button class="pa-move" data-a="move">Taşı</button>
+        ${node.box? '' : '<button class="pa-box" data-a="box">Kutu Ekle</button>'}
+        <button class="pa-del" data-a="del">Sil</button>
+      </div>`;
+  }
+
+  function bindNodePopupActions(node, marker){
+    const el = marker.getPopup().getElement();
+    if(!el) return;
+    const moveBtn = el.querySelector('[data-a=move]');
+    const boxBtn = el.querySelector('[data-a=box]');
+    const delBtn = el.querySelector('[data-a=del]');
+    if(moveBtn) moveBtn.onclick = ()=>{ marker.closePopup(); enableNodeDrag(node, marker); };
+    if(boxBtn) boxBtn.onclick = ()=>{ marker.closePopup(); openBoxForm(node); };
+    if(delBtn) delBtn.onclick = ()=>{ marker.closePopup(); confirmDeleteNode(node); };
+  }
+
+  function enableNodeDrag(node, marker){
+    marker.dragging.enable();
+    toast("Noktayı sürükleyip yeni yere bırakın, sonra ekrana dokunun");
+    marker.once('dragend', function(){
+      node.lat = marker.getLatLng().lat; node.lng = marker.getLatLng().lng;
+      save();
+      marker.dragging.disable();
+      redrawEdgesForNode(node.id);
+      toast("Konum güncellendi");
+    });
+  }
+
+  function confirmDeleteNode(node){
+    const overlay = buildOverlay(`
+      <h2>Silinsin mi?</h2>
+      <p class="hint">Bu nokta, üzerindeki kutu ve bağlı tüm kablolar silinecek. Bu işlem geri alınamaz.</p>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="del-cancel">Vazgeç</button>
+        <button class="btn btn-danger" id="del-ok">Sil</button>
+      </div>`);
+    overlay.querySelector('#del-cancel').onclick = ()=>closeOverlay(overlay);
+    overlay.querySelector('#del-ok').onclick = ()=>{
+      closeOverlay(overlay);
+      deleteNode(node.id);
+    };
+  }
+
+  function deleteNode(nodeId){
+    state.edges = state.edges.filter(e=>{
+      const hit = e.fromId===nodeId || e.toId===nodeId;
+      if(hit && edgeLineIndex[e.id]) map.removeLayer(edgeLineIndex[e.id]);
+      return !hit;
+    });
+    state.nodes = state.nodes.filter(n=>n.id!==nodeId);
+    if(markerIndex[nodeId]) map.removeLayer(markerIndex[nodeId]);
+    if(boxMarkerIndex[nodeId]) map.removeLayer(boxMarkerIndex[nodeId]);
+    delete markerIndex[nodeId]; delete boxMarkerIndex[nodeId];
+    save();
+    toast("Silindi");
+  }
+
+  function onNodeClicked(node, marker){
+    if(mode === 'cable'){
+      if(!cableFirstNode){
+        cableFirstNode = node;
+        const el = marker.getElement(); if(el) el.style.outline = "3px solid #e67e22";
+        toast("Şimdi bağlanacak ikinci noktaya dokunun");
+      } else if(cableFirstNode.id !== node.id){
+        const first = cableFirstNode;
+        cableFirstNode = null;
+        clearHighlights();
+        openCableForm(first, node);
+      }
+    }
+  }
+
+  // ---------- Box ----------
+  function boxOffset(node){
+    // düğümün hemen yanına küçük bir ofsetle konumlandır (~ göz ile ayırt edilebilir mesafe)
+    const d = 0.00004;
+    return [node.lat + d, node.lng + d];
+  }
+  function boxLatLng(node){
+    if(node.box && typeof node.box.lat === 'number') return [node.box.lat, node.box.lng];
+    return boxOffset(node);
+  }
+
+  function allBoxes(excludeNodeId){
+    return state.nodes.filter(n=>n.box && n.id!==excludeNodeId).map(n=>({nodeId:n.id, name:n.box.name || ("Kutu-"+n.id)}));
+  }
+
+  function nextTamponName(parentName, excludeNodeId){
+    const count = state.nodes.filter(n=>n.id!==excludeNodeId && n.box && n.box.parentBoxNodeId && n.box.tamponAdiBase===parentName).length;
+    return `${parentName}(${count+1})`;
+  }
+
+  function boxCapOptions(cableType, currentCap){
+    const list = cableType === 'fiber' ? CAP_SPLITTER_FIBER : CAP_KUTU_BAKIR;
+    const isKnown = list.some(c=>String(c)===String(currentCap));
+    return list.map(c=>`<option value="${c}" ${String(currentCap)===String(c)?'selected':''}>${cableType==='fiber'?c:c+"'luk"}</option>`).join('')
+      + `<option value="custom" ${!isKnown?'selected':''}>Diğer</option>`;
+  }
+
+  function openBoxForm(node, existing){
+    const b = existing || {name:"", capacity:10, cableType:'bakir', parentBoxNodeId:null, tamponAdiBase:null};
+    const others = allBoxes(node.id);
+    const isFiberInit = b.cableType === 'fiber';
+    const knownInit = (isFiberInit ? CAP_SPLITTER_FIBER : CAP_KUTU_BAKIR).some(c=>String(c)===String(b.capacity));
+    const overlay = buildOverlay(`
+      <h2 id="bf-title">${isFiberInit?'Splitter Bilgisi':'Kutu Bilgisi'}</h2>
+      <div class="field">
+        <label>${isFiberInit?'Tampon splitter mı?':'Tampon kutu mu?'} <span id="bf-tampon-label"></span></label>
+        <div class="chip-row" id="bf-tampon">
+          <button type="button" class="chip ${!b.parentBoxNodeId?'selected':''}" data-v="hayir">Hayır (Dağıtım)</button>
+          <button type="button" class="chip ${b.parentBoxNodeId?'selected':''}" data-v="evet">Evet (Tampon)</button>
+        </div>
+      </div>
+      <div class="field" id="bf-parent-wrap" style="display:${b.parentBoxNodeId?'block':'none'}">
+        <label>Hangisinden besleniyor?</label>
+        <select id="bf-parent">
+          <option value="">— Seçiniz —</option>
+          ${others.map(o=>`<option value="${o.nodeId}" ${b.parentBoxNodeId===o.nodeId?'selected':''}>${escapeHtml(o.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label id="bf-name-label">${isFiberInit?'Splitter Adı / Kodu':'Kutu Adı / Kodu'}</label>
+        <input type="text" id="bf-name" value="${escapeHtml(b.name)}" placeholder="Örn: K-102">
+      </div>
+      <div class="field">
+        <label>Kablo Tipi</label>
+        <div class="chip-row" id="bf-type">
+          <button type="button" class="chip ${b.cableType==='bakir'?'selected':''}" data-v="bakir">Bakır</button>
+          <button type="button" class="chip ${b.cableType==='fiber'?'selected':''}" data-v="fiber">Fiber</button>
+        </div>
+      </div>
+      <div class="field">
+        <label id="bf-cap-label">Kapasite${isFiberInit?' (Splitter oranı)':''}</label>
+        <select id="bf-cap">${boxCapOptions(b.cableType, b.capacity)}</select>
+      </div>
+      <div class="field" id="bf-cap-custom-wrap" style="display:${!knownInit?'block':'none'}">
+        <label>Kapasite (serbest giriş)</label>
+        <input type="text" id="bf-cap-custom" value="${!knownInit?escapeHtml(String(b.capacity)):''}" placeholder="${isFiberInit?'Örn: 1/32':'Örn: 40'}">
+      </div>
+      <div class="btn-row">
+        ${existing? `<button class="btn btn-danger" id="bf-del">${isFiberInit?'Splitter':'Kutu'} Sil</button>`:'<button class="btn btn-secondary" id="bf-cancel">Vazgeç</button>'}
+        <button class="btn btn-primary" id="bf-save">Kaydet</button>
+      </div>
+    `);
+    let selType = b.cableType;
+    let isTampon = !!b.parentBoxNodeId;
+    attachUppercase(overlay.querySelector('#bf-name'));
+
+    function refreshTerminology(){
+      const fiber = selType === 'fiber';
+      overlay.querySelector('#bf-title').textContent = fiber ? 'Splitter Bilgisi' : 'Kutu Bilgisi';
+      overlay.querySelector('#bf-name-label').textContent = fiber ? 'Splitter Adı / Kodu' : 'Kutu Adı / Kodu';
+      overlay.querySelector('#bf-cap-label').textContent = 'Kapasite' + (fiber ? ' (Splitter oranı)' : '');
+      const delBtn = overlay.querySelector('#bf-del');
+      if(delBtn) delBtn.textContent = (fiber?'Splitter':'Kutu') + ' Sil';
+      overlay.querySelector('#bf-cap').innerHTML = boxCapOptions(selType, (selType==='fiber'?CAP_SPLITTER_FIBER:CAP_KUTU_BAKIR)[0]);
+      overlay.querySelector('#bf-cap-custom-wrap').style.display = 'none';
+    }
+
+    overlay.querySelectorAll('#bf-type .chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        overlay.querySelectorAll('#bf-type .chip').forEach(c=>c.classList.remove('selected'));
+        chip.classList.add('selected'); selType = chip.getAttribute('data-v');
+        refreshTerminology();
+      };
+    });
+    overlay.querySelectorAll('#bf-tampon .chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        overlay.querySelectorAll('#bf-tampon .chip').forEach(c=>c.classList.remove('selected'));
+        chip.classList.add('selected');
+        isTampon = chip.getAttribute('data-v') === 'evet';
+        overlay.querySelector('#bf-parent-wrap').style.display = isTampon ? 'block' : 'none';
+      };
+    });
+    overlay.querySelector('#bf-parent') && overlay.querySelector('#bf-parent').addEventListener('change', function(){
+      const parentNode = state.nodes.find(n=>n.id===this.value);
+      if(parentNode && parentNode.box && !overlay.querySelector('#bf-name').value.trim()){
+        const base = parentNode.box.name || ("Kutu-"+parentNode.id);
+        overlay.querySelector('#bf-name').value = nextTamponName(base, node.id);
+      }
+    });
+    overlay.querySelector('#bf-cap').addEventListener('change', function(){
+      overlay.querySelector('#bf-cap-custom-wrap').style.display = this.value==='custom' ? 'block' : 'none';
+    });
+    if(overlay.querySelector('#bf-cancel')) overlay.querySelector('#bf-cancel').onclick = ()=>closeOverlay(overlay);
+    if(overlay.querySelector('#bf-del')) overlay.querySelector('#bf-del').onclick = ()=>{
+      node.box = null; save();
+      if(boxMarkerIndex[node.id]){ map.removeLayer(boxMarkerIndex[node.id]); delete boxMarkerIndex[node.id]; }
+      closeOverlay(overlay); toast("Silindi");
+    };
+    overlay.querySelector('#bf-save').onclick = ()=>{
+      const capSel = overlay.querySelector('#bf-cap').value;
+      const cap = capSel==='custom' ? (overlay.querySelector('#bf-cap-custom').value||'').trim() : capSel;
+      const name = overlay.querySelector('#bf-name').value.trim();
+      let parentBoxNodeId = null, tamponAdiBase = null;
+      if(isTampon){
+        parentBoxNodeId = overlay.querySelector('#bf-parent').value || null;
+        const parentNode = parentBoxNodeId && state.nodes.find(n=>n.id===parentBoxNodeId);
+        tamponAdiBase = parentNode && parentNode.box ? (parentNode.box.name || ("Kutu-"+parentNode.id)) : null;
+      }
+      const prevLatLng = existing && typeof existing.lat === 'number' ? [existing.lat, existing.lng] : boxOffset(node);
+      node.box = { name, capacity: cap, cableType: selType, parentBoxNodeId, tamponAdiBase, lat: prevLatLng[0], lng: prevLatLng[1] };
+      save();
+      renderBox(node);
+      closeOverlay(overlay);
+      toast("Kaydedildi");
+    };
+  }
+
+  function renderBox(node){
+    if(boxMarkerIndex[node.id]) map.removeLayer(boxMarkerIndex[node.id]);
+    const isFiber = node.box.cableType === 'fiber';
+    const color = isFiber ? '#2e7d32' : '#b45309';
+    const label = isFiber ? 'Splitter' : 'Kutu';
+    const icon = L.divIcon({
+      className:'', html:`<div class="divicon-box" style="width:${isFiber?26:20}px;height:20px;font-size:${isFiber?'9px':'10px'};background:${color}">${escapeHtml(String(node.box.capacity))}</div>`,
+      iconSize:[isFiber?26:20,20], iconAnchor:[isFiber?13:10,10]
+    });
+    const marker = L.marker(boxLatLng(node), {icon, draggable:false}).addTo(layerBoxes);
+    const parentNode = node.box.parentBoxNodeId ? state.nodes.find(n=>n.id===node.box.parentBoxNodeId) : null;
+    const tamponLine = node.box.parentBoxNodeId ? `<br>Tampon ${label.toLowerCase()} — besleniyor: ${escapeHtml(parentNode && parentNode.box ? (parentNode.box.name||'-') : '(silinmiş)')}` : '';
+    marker.bindPopup(`<b>${label}${node.box.name? ' — '+escapeHtml(node.box.name):''}</b><br>Kapasite: ${escapeHtml(String(node.box.capacity))}${isFiber?'':"'lük"}<br>Tip: ${isFiber?'Fiber':'Bakır'}${tamponLine}
+      <div class="popup-actions">
+        <button class="pa-move" data-a="move">Taşı</button>
+        <button class="pa-box" data-a="edit">Düzenle</button>
+      </div>`);
+    marker.on('popupopen', ()=>{
+      const el = marker.getPopup().getElement();
+      const editBtn = el && el.querySelector('[data-a=edit]');
+      const moveBtn = el && el.querySelector('[data-a=move]');
+      if(editBtn) editBtn.onclick = ()=>{ marker.closePopup(); openBoxForm(node, node.box); };
+      if(moveBtn) moveBtn.onclick = ()=>{ marker.closePopup(); enableBoxDrag(node, marker); };
+    });
+    boxMarkerIndex[node.id] = marker;
+  }
+
+  function enableBoxDrag(node, marker){
+    marker.dragging.enable();
+    toast("Kutuyu sürükleyip yeni yere bırakın");
+    marker.once('dragend', function(){
+      node.box.lat = marker.getLatLng().lat; node.box.lng = marker.getLatLng().lng;
+      save();
+      marker.dragging.disable();
+      toast("Kutu konumu güncellendi");
+    });
+  }
+
+  // ---------- Cable / Edge ----------
+  function hatCapOptionsHtml(cableType){
+    if(cableType === 'fiber'){
+      return CAP_HAT_FIBER.map(c=>`<option value="${c.v}">${c.label}</option>`).join('') + '<option value="custom">Diğer</option>';
+    }
+    return CAP_HAT_BAKIR.map(c=>`<option value="${c}">${c}'lük</option>`).join('') + '<option value="custom">Diğer</option>';
+  }
+
+  function openCableForm(nodeA, nodeB){
+    const overlay = buildOverlay(`
+      <h2>Kablo Bilgisi</h2>
+      <p class="hint">${labelOf(nodeA)} → ${labelOf(nodeB)} arası</p>
+      <div class="field">
+        <label>Kablo Tipi</label>
+        <div class="chip-row" id="cf-type">
+          <button type="button" class="chip selected" data-v="bakir">Bakır</button>
+          <button type="button" class="chip" data-v="fiber">Fiber</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Kapasite</label>
+        <select id="cf-cap">${CAP_HAT_BAKIR.map(c=>`<option value="${c}">${c}'lük</option>`).join('')}<option value="custom">Diğer</option></select>
+      </div>
+      <div class="field" id="cf-cap-custom-wrap" style="display:none">
+        <label>Kapasite (serbest giriş)</label>
+        <input type="number" id="cf-cap-custom">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="cf-cancel">Vazgeç</button>
+        <button class="btn btn-primary" id="cf-save">Kaydet</button>
+      </div>
+    `);
+    let selType = 'bakir';
+    overlay.querySelectorAll('#cf-type .chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        overlay.querySelectorAll('#cf-type .chip').forEach(c=>c.classList.remove('selected'));
+        chip.classList.add('selected'); selType = chip.getAttribute('data-v');
+        overlay.querySelector('#cf-cap').innerHTML = hatCapOptionsHtml(selType);
+        overlay.querySelector('#cf-cap-custom-wrap').style.display = 'none';
+      };
+    });
+    overlay.querySelector('#cf-cap').addEventListener('change', function(){
+      overlay.querySelector('#cf-cap-custom-wrap').style.display = this.value==='custom' ? 'block' : 'none';
+    });
+    overlay.querySelector('#cf-cancel').onclick = ()=>closeOverlay(overlay);
+    overlay.querySelector('#cf-save').onclick = ()=>{
+      const capSel = overlay.querySelector('#cf-cap').value;
+      const cap = capSel==='custom' ? Number(overlay.querySelector('#cf-cap-custom').value||0) : Number(capSel);
+      addCable(nodeA, nodeB, cap, selType);
+      closeOverlay(overlay);
+      toast("Kablo eklendi");
+    };
+  }
+
+  function findEdge(idA, idB){
+    return state.edges.find(e => (e.fromId===idA && e.toId===idB) || (e.fromId===idB && e.toId===idA));
+  }
+
+  function addCable(nodeA, nodeB, capacity, cableType){
+    let edge = findEdge(nodeA.id, nodeB.id);
+    if(!edge){
+      edge = { id: uid(), fromId: nodeA.id, toId: nodeB.id, cables: [] };
+      state.edges.push(edge);
+    }
+    edge.cables.push({capacity, cableType});
+    save();
+    renderEdge(edge);
+  }
+
+  function renderEdge(edge){
+    if(edgeLineIndex[edge.id]) map.removeLayer(edgeLineIndex[edge.id]);
+    const a = state.nodes.find(n=>n.id===edge.fromId);
+    const b = state.nodes.find(n=>n.id===edge.toId);
+    if(!a || !b) return;
+    const hasFiber = edge.cables.some(c=>c.cableType==='fiber');
+    const hasBakir = edge.cables.some(c=>c.cableType==='bakir');
+    const color = hasFiber && hasBakir ? '#6b7280' : (hasFiber ? '#2e7d32' : '#b45309');
+    const weight = 2 + Math.min(edge.cables.length, 4);
+    const line = L.polyline([[a.lat,a.lng],[b.lat,b.lng]], {color, weight, opacity:.85}).addTo(layerEdges);
+    line.bindPopup(edgePopupHtml(edge));
+    line.on('popupopen', ()=>bindEdgePopupActions(edge, line));
+    edgeLineIndex[edge.id] = line;
+  }
+
+  function hatCapLabel(capacity, cableType){
+    if(cableType === 'fiber'){
+      const found = CAP_HAT_FIBER.find(c=>String(c.v)===String(capacity));
+      if(found) return found.label;
+    }
+    return capacity + "'lük";
+  }
+
+  function edgePopupHtml(edge){
+    const rows = edge.cables.map((c,i)=>`${i+1}. ${hatCapLabel(c.capacity,c.cableType)} — ${c.cableType==='fiber'?'Fiber':'Bakır'}`).join('<br>');
+    return `<b>Kablolar</b><br>${rows}
+      <div class="popup-actions">
+        <button class="pa-cable" data-a="add">+ Kablo Ekle</button>
+        <button class="pa-del" data-a="del">Hattı Sil</button>
+      </div>`;
+  }
+
+  function bindEdgePopupActions(edge, line){
+    const el = line.getPopup().getElement();
+    if(!el) return;
+    const addBtn = el.querySelector('[data-a=add]');
+    const delBtn = el.querySelector('[data-a=del]');
+    if(addBtn) addBtn.onclick = ()=>{
+      line.closePopup();
+      const a = state.nodes.find(n=>n.id===edge.fromId), b = state.nodes.find(n=>n.id===edge.toId);
+      openCableForm(a,b);
+    };
+    if(delBtn) delBtn.onclick = ()=>{
+      line.closePopup();
+      state.edges = state.edges.filter(e=>e.id!==edge.id);
+      map.removeLayer(line);
+      save();
+      toast("Hat silindi");
+    };
+  }
+
+  function redrawEdgesForNode(nodeId){
+    state.edges.filter(e=>e.fromId===nodeId||e.toId===nodeId).forEach(renderEdge);
+  }
+
+  function labelOf(node){
+    return (node.type==='direk'?'Direk':'Bina N.') + (node.label? ' '+node.label : '');
+  }
+
+  function openLayerPicker(applyLayer){
+    const savedLayer = localStorage.getItem(MAP_LAYER_PREF_KEY) || 'esri_street';
+    const savedKey = localStorage.getItem(CARTO_KEY_STORAGE) || DEFAULT_CARTO_KEY;
+    const overlay = buildOverlay(`
+      <h2>Harita Katmanı</h2>
+      <p class="hint">Bir katman seçin. Bazıları ücretsiz bir API key gerektirir — key'iniz varsa aşağıya girin.</p>
+      <div class="chip-row" id="lp-chips">
+        ${MAP_LAYERS.map(l=>`<button type="button" class="chip ${savedLayer===l.id?'selected':''}" data-v="${l.id}">${l.name}</button>`).join('')}
+      </div>
+      <div class="field" id="lp-key-wrap" style="display:${savedLayer==='carto'?'block':'none'}">
+        <label>CARTO API Key</label>
+        <input type="text" id="lp-key" value="${escapeHtml(savedKey)}" placeholder="carto.com/basemaps/apikey adresinden ücretsiz alın">
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="lp-close">Kapat</button>
+        <button class="btn btn-primary" id="lp-apply">Uygula</button>
+      </div>
+    `, true);
+    let selLayer = savedLayer;
+    overlay.querySelectorAll('#lp-chips .chip').forEach(chip=>{
+      chip.onclick = ()=>{
+        overlay.querySelectorAll('#lp-chips .chip').forEach(c=>c.classList.remove('selected'));
+        chip.classList.add('selected');
+        selLayer = chip.getAttribute('data-v');
+        overlay.querySelector('#lp-key-wrap').style.display = selLayer==='carto' ? 'block' : 'none';
+      };
+    });
+    overlay.querySelector('#lp-close').onclick = ()=>closeOverlay(overlay);
+    overlay.querySelector('#lp-apply').onclick = ()=>{
+      const def = MAP_LAYERS.find(l=>l.id===selLayer);
+      const keyInput = overlay.querySelector('#lp-key');
+      const key = keyInput ? keyInput.value.trim() : '';
+      if(def && def.needsKey && !key){ toast("Bu katman için API key girmelisiniz"); return; }
+      applyLayer(selLayer, key);
+      closeOverlay(overlay);
+      toast("Harita katmanı: " + (def?def.name:selLayer));
+    };
+  }
+
+  // ---------- Lokal adı / oturum ----------
+  function askLokalAdi(isFirst){
+    const santralOptions = Array.from(new Set(SANTRAL_SD_DATA.map(x=>x.s))).sort((a,b)=>a.localeCompare(b,'tr'));
+    const sdOptions = Array.from(new Set(SANTRAL_SD_DATA.map(x=>x.sd))).sort((a,b)=>a.localeCompare(b,'tr'));
+    const overlay = buildOverlay(`
+      <h2>Lokal / İş Tanımı</h2>
+      <p class="hint">Lokal adları farklı santral/saha dolaplarında tekrar edebiliyor — bu yüzden santral ve SD bilgisini de ayrıca seçin (ikisi birbirinden bağımsız listelerdir).</p>
+      <div class="field">
+        <label>Lokal Adı</label>
+        <input type="text" id="lok-input" placeholder="Örn: C Lokali" value="${escapeHtml(state.lokalAdi||'')}">
+      </div>
+      <div class="field">
+        <label>Santral</label>
+        <input type="text" id="lok-santral" list="santral-list" placeholder="Santral adı yazın veya seçin" value="${escapeHtml(state.santralAdi||'')}">
+        <datalist id="santral-list">${santralOptions.map(s=>`<option value="${escapeHtml(s)}">`).join('')}</datalist>
+      </div>
+      <div class="field">
+        <label>Saha Dolabı (SD)</label>
+        <input type="text" id="lok-sd" list="sd-list" placeholder="SD no yazın veya seçin" value="${escapeHtml(state.sahaDolabiNo||'')}">
+        <datalist id="sd-list">${sdOptions.map(sd=>`<option value="${escapeHtml(sd)}">`).join('')}</datalist>
+      </div>
+      <div class="btn-row">
+        ${isFirst? '' : '<button class="btn btn-secondary" id="lok-cancel">Vazgeç</button>'}
+        <button class="btn btn-primary" id="lok-ok">Başla</button>
+      </div>
+    `, !isFirst);
+
+    const santralInput = overlay.querySelector('#lok-santral');
+    const sdInput = overlay.querySelector('#lok-sd');
+    const lokInput = overlay.querySelector('#lok-input');
+    attachUppercase(lokInput); attachUppercase(santralInput); attachUppercase(sdInput);
+
+    if(overlay.querySelector('#lok-cancel')) overlay.querySelector('#lok-cancel').onclick = ()=>closeOverlay(overlay);
+    overlay.querySelector('#lok-ok').onclick = ()=>{
+      const v = overlay.querySelector('#lok-input').value.trim();
+      if(!v){ toast("Lütfen bir lokal adı girin"); return; }
+      state.lokalAdi = v;
+      state.santralAdi = santralInput.value.trim();
+      state.sahaDolabiNo = sdInput.value.trim();
+      save(); updateLokalBadge();
+      closeOverlay(overlay);
+    };
+  }
+
+  function openSessionMenu(){
+    const overlay = buildOverlay(`
+      <h2>Oturum</h2>
+      <div class="field"><b>Lokal:</b> ${escapeHtml(state.lokalAdi||'-')}</div>
+      <div class="field"><b>Santral:</b> ${escapeHtml(state.santralAdi||'-')} &nbsp; <b>SD:</b> ${escapeHtml(state.sahaDolabiNo||'-')}</div>
+      <div class="field">Direk/Bina: ${state.nodes.length} · Kutu: ${state.nodes.filter(n=>n.box).length} · Hat: ${state.edges.length}</div>
+      <div class="field" style="color:var(--gray);">Sürüm: v${APP_VERSION}</div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="sm-rename">Lokal/Santral/SD Değiştir</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="sm-changelog">Sürüm Notları</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-danger" id="sm-reset">Oturumu Sıfırla (Yeni Lokal)</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="sm-close">Kapat</button>
+      </div>
+    `);
+    overlay.querySelector('#sm-rename').onclick = ()=>{ closeOverlay(overlay); askLokalAdi(false); };
+    overlay.querySelector('#sm-changelog').onclick = ()=>{ closeOverlay(overlay); openChangelog(); };
+    overlay.querySelector('#sm-reset').onclick = ()=>{
+      closeOverlay(overlay);
+      const c = buildOverlay(`
+        <h2>Emin misiniz?</h2>
+        <p class="hint">Mevcut oturumdaki tüm işaretlemeler silinecek. Önce KMZ olarak dışa aktardığınızdan emin olun.</p>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="rc-cancel">Vazgeç</button>
+          <button class="btn btn-danger" id="rc-ok">Sıfırla</button>
+        </div>`);
+      c.querySelector('#rc-cancel').onclick = ()=>closeOverlay(c);
+      c.querySelector('#rc-ok').onclick = ()=>{
+        closeOverlay(c);
+        state = {lokalAdi:"", santralAdi:"", sahaDolabiNo:"", nodes:[], edges:[], nextId:1};
+        save(); updateLokalBadge(); renderAll();
+        askLokalAdi(true);
+      };
+    };
+    overlay.querySelector('#sm-close').onclick = ()=>closeOverlay(overlay);
+  }
+
+  function openChangelog(){
+    const body = CHANGELOG.map(c=>`
+      <div style="margin-bottom:10px;">
+        <b>v${c.v}</b> <span style="color:var(--gray);font-size:12px;">${c.d}</span>
+        <ul style="margin:4px 0 0 18px;padding:0;font-size:13px;">
+          ${c.notes.map(n=>`<li>${escapeHtml(n)}</li>`).join('')}
+        </ul>
+      </div>`).join('');
+    const overlay = buildOverlay(`
+      <h2>Sürüm Notları</h2>
+      ${body}
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="cl-close">Kapat</button>
+      </div>
+    `, true);
+    overlay.querySelector('#cl-close').onclick = ()=>closeOverlay(overlay);
+  }
+
+  // ---------- KMZ export ----------
+  function xmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function buildKML(){
+    const direkPMs = [], binaPMs = [], kutuPMs = [], hatPMs = [];
+    state.nodes.forEach(n=>{
+      const name = labelOf(n);
+      const ext = `<ExtendedData>
+        <Data name="Tip"><value>${n.type==='direk'?'Direk':'BinaNoktasi'}</value></Data>
+        <Data name="BlokIsleme"><value>${n.type==='bina'?'Evet':'Hayir'}</value></Data>
+      </ExtendedData>`;
+      const pm = `<Placemark><name>${xmlEsc(name)}</name>${ext}<Point><coordinates>${n.lng},${n.lat},0</coordinates></Point></Placemark>`;
+      if(n.type==='direk') direkPMs.push(pm); else binaPMs.push(pm);
+      if(n.box){
+        const off = boxLatLng(n);
+        const isFiber = n.box.cableType === 'fiber';
+        const bname = n.box.name || ((isFiber?"Splitter-":"Kutu-")+n.id);
+        const parentNode = n.box.parentBoxNodeId ? state.nodes.find(x=>x.id===n.box.parentBoxNodeId) : null;
+        const parentBoxName = parentNode && parentNode.box ? (parentNode.box.name || ("Kutu-"+parentNode.id)) : "";
+        const bext = `<ExtendedData>
+          <Data name="Tur"><value>${isFiber?'Splitter':'Kutu'}</value></Data>
+          <Data name="KutuAdi"><value>${xmlEsc(n.box.name)}</value></Data>
+          <Data name="Kapasite"><value>${xmlEsc(n.box.capacity)}</value></Data>
+          <Data name="KabloTipi"><value>${isFiber?'Fiber':'Bakir'}</value></Data>
+          <Data name="BagliNokta"><value>${xmlEsc(name)}</value></Data>
+          <Data name="TamponMu"><value>${n.box.parentBoxNodeId?'Evet':'Hayir'}</value></Data>
+          <Data name="BeslendigiKutu"><value>${xmlEsc(parentBoxName)}</value></Data>
+        </ExtendedData>`;
+        kutuPMs.push(`<Placemark><name>${xmlEsc(bname)}</name>${bext}<Point><coordinates>${off[1]},${off[0]},0</coordinates></Point></Placemark>`);
+      }
+    });
+    state.edges.forEach(e=>{
+      const a = state.nodes.find(n=>n.id===e.fromId), b = state.nodes.find(n=>n.id===e.toId);
+      if(!a||!b) return;
+      e.cables.forEach((c,i)=>{
+        const name = `${labelOf(a)} - ${labelOf(b)} (Kablo ${i+1})`;
+        const ext = `<ExtendedData>
+          <Data name="Kapasite"><value>${xmlEsc(c.capacity)}</value></Data>
+          <Data name="KabloTipi"><value>${c.cableType==='fiber'?'Fiber':'Bakir'}</value></Data>
+        </ExtendedData>`;
+        hatPMs.push(`<Placemark><name>${xmlEsc(name)}</name>${ext}<LineString><tessellate>1</tessellate><coordinates>${a.lng},${a.lat},0 ${b.lng},${b.lat},0</coordinates></LineString></Placemark>`);
+      });
+    });
+    const now = new Date();
+    const tarih = now.toLocaleString('tr-TR');
+    const docExt = `<ExtendedData>
+      <Data name="Santral"><value>${xmlEsc(state.santralAdi)}</value></Data>
+      <Data name="SahaDolabi"><value>${xmlEsc(state.sahaDolabiNo)}</value></Data>
+      <Data name="Versiyon"><value>${xmlEsc(APP_VERSION)}</value></Data>
+      <Data name="OlusturmaTarihi"><value>${xmlEsc(tarih)}</value></Data>
+    </ExtendedData>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>${xmlEsc(state.lokalAdi||'CBS Guzergah')}</name>
+<description>Santral: ${xmlEsc(state.santralAdi)} / SD: ${xmlEsc(state.sahaDolabiNo)} — v${xmlEsc(APP_VERSION)} — ${xmlEsc(tarih)}</description>
+${docExt}
+<Folder><name>Direkler</name>${direkPMs.join('')}</Folder>
+<Folder><name>Bina Noktalari (Blok Isleme)</name>${binaPMs.join('')}</Folder>
+<Folder><name>Kutular ve Splitterlar</name>${kutuPMs.join('')}</Folder>
+<Folder><name>Hatlar (Kablolar)</name>${hatPMs.join('')}</Folder>
+</Document>
+</kml>`;
+  }
+
+  async function exportKMZ(){
+    if(!state.nodes.length){ toast("Önce en az bir nokta ekleyin"); return; }
+    const kml = buildKML();
+    const zip = new JSZip();
+    zip.file("doc.kml", kml);
+    const blob = await zip.generateAsync({type:"blob"});
+    const now = new Date();
+    const stamp = now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')+"_"+String(now.getHours()).padStart(2,'0')+String(now.getMinutes()).padStart(2,'0');
+    const safe = (s)=> (s||'').toString().trim().replace(/[^a-zA-Z0-9ığüşöçİĞÜŞÖÇ_-]/g,'_') || 'NA';
+    const safeSantral = safe(state.santralAdi);
+    const safeSd = safe(state.sahaDolabiNo);
+    const safeLok = safe(state.lokalAdi);
+    // Sabit sıra: Santral-SD-Lokal-Tarih (başka bir PWA'nın kolay ayrıştırabilmesi için), versiyon sonda ayrı ek olarak
+    const filename = `${safeSantral}-${safeSd}-${safeLok}-${stamp}_v${APP_VERSION}.kmz`;
+    const file = new File([blob], filename, {type:'application/vnd.google-earth.kmz'});
+
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file], title: filename});
+        toast("Paylaşıldı");
+        return;
+      }catch(e){ /* kullanıcı iptal etti veya paylaşım başarısız oldu, indirmeye düş */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("KMZ indirildi: " + filename);
+  }
+
+  // ---------- Modal helper ----------
+  function buildOverlay(innerHtml, dismissOnBackdrop){
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal">${innerHtml}</div>`;
+    if(dismissOnBackdrop){
+      overlay.addEventListener('click', function(e){ if(e.target===overlay) closeOverlay(overlay); });
+    }
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+  function closeOverlay(overlay){ if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+  function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s==null?'':s; return d.innerHTML; }
+  function attachUppercase(el){
+    if(!el) return;
+    el.addEventListener('input', function(){
+      const pos = el.selectionStart;
+      el.value = el.value.toLocaleUpperCase('tr');
+      try{ el.setSelectionRange(pos, pos); }catch(e){}
+    });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
