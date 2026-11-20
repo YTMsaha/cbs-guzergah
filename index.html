@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>CBS Güzergah Aracı</title>
+<meta name="theme-color" content="#1f4e78">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CBS Güzergah">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
   :root{
@@ -94,7 +101,11 @@
 (function(){
   "use strict";
   const STORAGE_KEY = "cbs_guzergah_session_v1";
-  const MAP_LAYER_PREF_KEY = "cbs_map_layer_pref_v1";
+  const RECORDS_KEY = "cbs_guzergah_records_v2";
+  const USER_KEY = "cbs_guzergah_user_v1";
+  const INSTALL_KEY = "cbs_guzergah_install_v1";
+  const STALE_DAYS = 60;
+  const MAP_LAYER_PREF_KEY = "cbs_map_layer_pref_v2"; // v2: eski kayıtlı tercih sıfırlanır, varsayılan Esri Uydu
   const CARTO_KEY_STORAGE = "cbs_map_carto_key_v1";
   const DEFAULT_CARTO_KEY = "cb1_3imn_1_ccd1c9296d4059b57975ebf2";
   const MAP_LAYERS = [
@@ -109,8 +120,12 @@
   const BAKIR_CAP_LABELS = {10:"10'luk",20:"20'lik",30:"30'luk",50:"50'lik",100:"100'lük",150:"150'lik"};
   const CAP_HAT_FIBER = [{v:6,label:"6'lık"},{v:12,label:"12'lik"},{v:24,label:"24'lük"},{v:48,label:"48'lik"}];
 
-  const APP_VERSION = "1.7.1";
+  const APP_VERSION = "1.8.3";
   const CHANGELOG = [
+    {v:"1.8.3", d:"2026-11-20", notes:["Envanter penceresindeki 'Envanter Düzeltildi' işareti kaldırıldı: düzeltme CBS/Backoffice ekibi tarafından CBS kontrol uygulamasında işaretlenecek","Envanter JSON'una her kutu için sabit KutuNo eklendi (aynı lokalin envanteri tekrar gönderilse de kontrol uygulaması hangi kutu olduğunu tanıyabilsin diye)"]},
+    {v:"1.8.2", d:"2026-11-20", notes:["Kutu Abone Envanteri: kutu/splitter popup'ındaki 'Abone Envanteri' butonu (ve ⋮ menüsündeki 'Kutu Abone Envanteri' listesi) ayrı bir pencere açar; pencere kutunun kapasitesi kadar port satırı gösterir","Her port için durum (Boş / Dolu / Arızalı / Rezerve), abone hizmet numarası ve not girilir. Abone adı/telefon/adres tutulmaz","Kutu için 'Envanter düzeltildi' işareti: işaretleyen kişi ve tarih kaydedilir (takip amaçlı), geri alınabilir","Envanter bilgisi KMZ'ye girmez; ⋮ menüsünden 'Envanteri JSON Aktar' ile ayrı dosya olarak alınır (CBS kontrol uygulamasında okunacak)","KMZ'den NoktaNo / KutuNo / KabloNo alanları kaldırıldı (gereksizdi); KayitNo, KmzUretimNo ve iş büyüklüğü adetleri korunuyor"]},
+    {v:"1.8.1", d:"2026-11-20", notes:["KMZ'ye iş büyüklüğü özeti eklendi: direk, bina noktası, kutu, splitter, tampon kutu, hat ve kablo adetleri ile toplam hat uzunluğu (metre) — CBS kontrol uygulaması iş yükünü ve ilerlemeyi bu alanlardan hesaplayacak","KMZ'ye KayitNo (kayıt kimliği) ve KmzUretimNo eklendi: aynı lokalin düzeltilip tekrar gönderilen KMZ'leri çift sayılmadan tek iş olarak izlenebilecek","Her direk, bina noktası, kutu ve kablo işaretine ayrı NoktaNo / KutuNo / KabloNo eklendi (iş bazında 'kontrol edildi' işaretleme için)"]},
+    {v:"1.8.0", d:"2026-11-20", notes:["Kayıtlarım: artık birden çok lokal kaydı saklanıyor. Uygulama açılınca en son kayıt açılır; ⋮ menüsünden Kayıtlarım ile eski kayıtlara dönüp devam edilebilir, KMZ yeniden üretilebilir. Yeni lokal eski kaydı silmez","Her kayıtta 'Son kayıt' ve 'KMZ üretildi' tarihleri gösteriliyor","60 günden eski kayıtlar için açılışta 'KMZ'yi gönderdiniz mi? Sil / Sakla' sorusu soruluyor (Sakla sayacı yeniden başlatır)","İlk açılışta Ad Soyad soruluyor; KMZ içine hazırlayan adı soyadı, kurulum numarası, cihaz/tarayıcı özeti, uygulama sürümü ve üretim tarihi gömülüyor (telefon no / MAC tarayıcıdan okunamaz)","Varsayılan harita katmanı Esri Uydu oldu","Ana ekrana eklenebilir uygulama ikonu (manifest + ikon) eklendi","Eski tek oturum (v1.7.1 ve öncesi) otomatik olarak Kayıtlarım listesine taşınır"]},
     {v:"1.7.1", d:"2026-09-11", notes:["Santral ve SD listeleri excel verisinden yanlış (satır bazlı eşleşmiş) alınmıştı — düzeltildi: artık A ve B sütunları tamamen bağımsız iki liste olarak okunuyor (160 santral, 198 SD kodu, örn. 235B artık listede)"]},
     {v:"1.7.0", d:"2026-09-11", notes:["Direk, bina noktası, kutu ve splitter'lara Açıklama alanı eklendi — popup'taki Düzenle ile girilebilir","Kablo modundayken bir direğe/bina noktasına dokunulduğunda artık Taşı/Kutu Ekle/Sil kutusu açılmıyor, sadece kablo bağlantısı için seçiliyor","Kablo (hat) için Tesis Şekli eklendi: Havai (varsayılan) / Yeraltı — hat popup'ından Düzenle ile değiştirilebilir, Yeraltı seçilirse hat kesikli çizgiyle gösteriliyor"]},
     {v:"1.6.1", d:"2026-09-11", notes:["Bakır kablo/kutu kapasite etiketleri Türkçe kurallara uygun hale getirildi: 10'luk, 20'lik, 30'luk, 50'lik, 100'lük, 150'lik","Tampon kutu formunda 'Hangisinden besleniyor?' seçimi değiştirildiğinde, isim alanı hâlâ önceki otomatik öneriyse yeni seçime göre otomatik güncelleniyor (elle değiştirilmiş isimlere dokunulmuyor)"]},
@@ -137,8 +152,78 @@
   const boxMarkerIndex = {}; // nodeId -> leaflet marker
   const edgeLineIndex = {};  // edgeId -> leaflet polyline
 
+  let records = [];  // tüm kayıtlar; state, aktif kayıt nesnesidir
   function uid(){ return "n" + (state.nextId++); }
-  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  function newRecordId(){ return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  function emptyState(){
+    const t = Date.now();
+    return {id:newRecordId(), createdAt:t, savedAt:t, kmzAt:null, keepAt:null, lokalAdi:"", santralAdi:"", sahaDolabiNo:"", nodes:[], edges:[], nextId:1};
+  }
+  function persist(){
+    try{ localStorage.setItem(RECORDS_KEY, JSON.stringify({activeId:state.id, records:records})); }
+    catch(e){ toast("Kayıt cihaza yazılamadı (depolama dolu olabilir)", 3500); }
+  }
+  function save(){
+    state.savedAt = Date.now();
+    if(!records.includes(state)){
+      const i = records.findIndex(r=>r.id===state.id);
+      if(i>=0) records[i]=state; else records.push(state);
+    }
+    persist();
+  }
+  function getUser(){ try{ return localStorage.getItem(USER_KEY)||""; }catch(e){ return ""; } }
+  function getInstallId(){
+    let v=null;
+    try{ v=localStorage.getItem(INSTALL_KEY); }catch(e){}
+    if(!v){
+      v = "K-" + Math.random().toString(36).slice(2,6).toUpperCase() + Math.random().toString(36).slice(2,6).toUpperCase();
+      try{ localStorage.setItem(INSTALL_KEY, v); }catch(e){}
+    }
+    return v;
+  }
+  function deviceSummary(){
+    const ua = navigator.userAgent||"";
+    let os = /Android\s([\d.]+)/.test(ua) ? "Android "+RegExp.$1 : /iPhone|iPad/.test(ua) ? "iOS" : /Windows/.test(ua) ? "Windows" : /Mac OS/.test(ua) ? "macOS" : "Diger";
+    let br = /EdgA?\/([\d]+)/.test(ua) ? "Edge "+RegExp.$1 : /SamsungBrowser\/([\d]+)/.test(ua) ? "Samsung Browser "+RegExp.$1 : /Chrome\/([\d]+)/.test(ua) ? "Chrome "+RegExp.$1 : /Version\/([\d]+).*Safari/.test(ua) ? "Safari "+RegExp.$1 : "Diger";
+    return os + " / " + br + " / " + screen.width + "x" + screen.height;
+  }
+  function fmtDate(t){
+    if(!t) return "-";
+    const d=new Date(t); const p=n=>String(n).padStart(2,'0');
+    return p(d.getDate())+"."+p(d.getMonth()+1)+"."+d.getFullYear()+" "+p(d.getHours())+":"+p(d.getMinutes());
+  }
+  function normalizeRecord(r){
+    const t = Date.now();
+    if(!r.id) r.id=newRecordId();
+    if(!r.createdAt) r.createdAt=t;
+    if(!r.savedAt) r.savedAt=r.createdAt;
+    if(typeof r.santralAdi!=='string') r.santralAdi="";
+    if(typeof r.sahaDolabiNo!=='string') r.sahaDolabiNo="";
+    if(!Array.isArray(r.nodes)) r.nodes=[];
+    if(!Array.isArray(r.edges)) r.edges=[];
+    if(!r.nextId) r.nextId=1;
+    return r;
+  }
+  function loadRecords(){
+    let data=null;
+    try{ data = JSON.parse(localStorage.getItem(RECORDS_KEY)||"null"); }catch(e){}
+    if(data && Array.isArray(data.records) && data.records.length){
+      records = data.records.map(normalizeRecord);
+      state = records.find(r=>r.id===data.activeId) || records.slice().sort((a,b)=>b.savedAt-a.savedAt)[0];
+      return;
+    }
+    // v1.7.1 ve öncesi tek oturumu Kayıtlarım listesine taşı (tarih = ilk açılış günü)
+    let old=null;
+    try{ old = JSON.parse(localStorage.getItem(STORAGE_KEY)||"null"); }catch(e){}
+    if(old && old.lokalAdi){
+      state = normalizeRecord(old);
+      records = [state];
+      persist();
+    } else {
+      state = emptyState();
+      records = [];
+    }
+  }
   function toast(msg, ms){
     const t = document.getElementById('toast');
     t.textContent = msg; t.classList.add('show');
@@ -148,21 +233,21 @@
 
   // ---------- Init ----------
   function init(){
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if(saved){
-      try{ state = JSON.parse(saved); }catch(e){ state = {lokalAdi:"",santralAdi:"",sahaDolabiNo:"",nodes:[],edges:[],nextId:1}; }
-      if(typeof state.santralAdi !== 'string') state.santralAdi = "";
-      if(typeof state.sahaDolabiNo !== 'string') state.sahaDolabiNo = "";
-    }
+    loadRecords();
     setupMap();
     document.getElementById('versionTag').textContent = "v" + APP_VERSION;
+    bindToolbar();
     if(state.lokalAdi){
       updateLokalBadge();
       renderAll();
-    } else {
-      askLokalAdi(true);
+      fitToState();
     }
-    bindToolbar();
+    // Açılış akışı: Ad Soyad (ilk kez) -> Lokal (kayıt yoksa) -> 60 gün kontrolü
+    askUserName(true, function(){
+      if(!state.lokalAdi) askLokalAdi(true);
+      else checkStale();
+    });
+    registerSW();
     document.getElementById('menuBtn').addEventListener('click', openSessionMenu);
     document.getElementById('exportBtn').addEventListener('click', exportKMZ);
   }
@@ -184,7 +269,7 @@
       localStorage.setItem(MAP_LAYER_PREF_KEY, id);
       if(id==='carto') localStorage.setItem(CARTO_KEY_STORAGE, cartoKey||'');
     }
-    const initialLayer = localStorage.getItem(MAP_LAYER_PREF_KEY) || 'carto';
+    const initialLayer = localStorage.getItem(MAP_LAYER_PREF_KEY) || 'esri_sat';
     const initialKey = localStorage.getItem(CARTO_KEY_STORAGE) || DEFAULT_CARTO_KEY;
     applyLayer(initialLayer, initialKey);
 
@@ -619,12 +704,15 @@
       <div class="popup-actions">
         <button class="pa-move" data-a="move">Taşı</button>
         <button class="pa-box" data-a="edit">Düzenle</button>
+        <button class="pa-cable" data-a="env">Abone Envanteri</button>
       </div>`);
     marker.on('click', function(){ if(mode==='cable'){ marker.closePopup(); } });
     marker.on('popupopen', ()=>{
       const el = marker.getPopup().getElement();
       const editBtn = el && el.querySelector('[data-a=edit]');
       const moveBtn = el && el.querySelector('[data-a=move]');
+      const envBtn = el && el.querySelector('[data-a=env]');
+      if(envBtn) envBtn.onclick = ()=>{ marker.closePopup(); openEnvanter(node); };
       if(editBtn) editBtn.onclick = ()=>{ marker.closePopup(); openBoxForm(node, node.box); };
       if(moveBtn) moveBtn.onclick = ()=>{ marker.closePopup(); enableBoxDrag(node, marker); };
     });
@@ -812,7 +900,7 @@
   }
 
   function openLayerPicker(applyLayer){
-    const savedLayer = localStorage.getItem(MAP_LAYER_PREF_KEY) || 'esri_street';
+    const savedLayer = localStorage.getItem(MAP_LAYER_PREF_KEY) || 'esri_sat';
     const savedKey = localStorage.getItem(CARTO_KEY_STORAGE) || DEFAULT_CARTO_KEY;
     const overlay = buildOverlay(`
       <h2>Harita Katmanı</h2>
@@ -851,7 +939,7 @@
   }
 
   // ---------- Lokal adı / oturum ----------
-  function askLokalAdi(isFirst){
+  function askLokalAdi(isFirst, onCancel){
     const santralOptions = SANTRAL_LIST.slice().sort((a,b)=>a.localeCompare(b,'tr'));
     const sdOptions = SD_LIST.slice().sort((a,b)=>a.localeCompare(b,'tr'));
     const overlay = buildOverlay(`
@@ -872,17 +960,17 @@
         <datalist id="sd-list">${sdOptions.map(sd=>`<option value="${escapeHtml(sd)}">`).join('')}</datalist>
       </div>
       <div class="btn-row">
-        ${isFirst? '' : '<button class="btn btn-secondary" id="lok-cancel">Vazgeç</button>'}
+        ${(!isFirst||onCancel)? '<button class="btn btn-secondary" id="lok-cancel">Vazgeç</button>' : ''}
         <button class="btn btn-primary" id="lok-ok">Başla</button>
       </div>
-    `, !isFirst);
+    `, false);
 
     const santralInput = overlay.querySelector('#lok-santral');
     const sdInput = overlay.querySelector('#lok-sd');
     const lokInput = overlay.querySelector('#lok-input');
     attachUppercase(lokInput); attachUppercase(santralInput); attachUppercase(sdInput);
 
-    if(overlay.querySelector('#lok-cancel')) overlay.querySelector('#lok-cancel').onclick = ()=>closeOverlay(overlay);
+    if(overlay.querySelector('#lok-cancel')) overlay.querySelector('#lok-cancel').onclick = ()=>{ closeOverlay(overlay); if(onCancel) onCancel(); };
     overlay.querySelector('#lok-ok').onclick = ()=>{
       const v = overlay.querySelector('#lok-input').value.trim();
       if(!v){ toast("Lütfen bir lokal adı girin"); return; }
@@ -891,7 +979,137 @@
       state.sahaDolabiNo = sdInput.value.trim();
       save(); updateLokalBadge();
       closeOverlay(overlay);
+      if(isFirst && !onCancel) checkStale();
     };
+  }
+
+  function fitToState(){
+    try{
+      const pts = state.nodes.map(n=>[n.lat,n.lng]);
+      if(pts.length) map.fitBounds(pts,{padding:[40,40],maxZoom:19});
+    }catch(e){}
+  }
+
+  function switchTo(rec){
+    if(state.lokalAdi) save();
+    state = rec; mode=null; cableFirstNode=null;
+    document.querySelectorAll('.tbtn').forEach(b=>b.classList.remove('active'));
+    persist(); updateLokalBadge(); renderAll(); fitToState();
+  }
+
+  function startNewRecord(){
+    const prev = state;
+    state = emptyState(); mode=null; cableFirstNode=null;
+    renderAll(); updateLokalBadge();
+    askLokalAdi(true, function(){
+      state = prev; renderAll(); updateLokalBadge(); fitToState();
+    });
+  }
+
+  function askUserName(auto, done){
+    if(auto && getUser()){ if(done) done(); return; }
+    const first = !getUser();
+    const overlay = buildOverlay(`
+      <h2>${first?'Hoş geldiniz':'Ad Soyad'}</h2>
+      <p class="hint">KMZ dosyasının kim tarafından hazırlandığı anlaşılabilsin diye adınız ve soyadınız dosyanın içine yazılır. Bilgi yalnızca bu cihazda saklanır.</p>
+      <div class="field">
+        <label>Ad Soyad</label>
+        <input type="text" id="un-input" placeholder="Örn: Ahmet Yılmaz" value="${escapeHtml(getUser())}">
+      </div>
+      <div class="btn-row">
+        ${first?'':'<button class="btn btn-secondary" id="un-cancel">Vazgeç</button>'}
+        <button class="btn btn-primary" id="un-ok">Kaydet</button>
+      </div>`, false);
+    const inp = overlay.querySelector('#un-input');
+    if(overlay.querySelector('#un-cancel')) overlay.querySelector('#un-cancel').onclick = ()=>closeOverlay(overlay);
+    overlay.querySelector('#un-ok').onclick = ()=>{
+      const v = inp.value.trim().replace(/\s+/g,' ');
+      if(v.length<3 || !v.includes(' ')){ toast("Lütfen ad ve soyadınızı girin"); return; }
+      try{ localStorage.setItem(USER_KEY, v); }catch(e){}
+      closeOverlay(overlay);
+      toast("Kaydedildi: "+v);
+      if(done) done();
+    };
+  }
+
+  function staleRef(r){ return Math.max(r.savedAt||0, r.keepAt||0, r.kmzAt||0); }
+  function checkStale(){
+    const limit = Date.now() - STALE_DAYS*86400000;
+    const list = records.filter(r=>staleRef(r) < limit);
+    (function next(){
+      const r = list.shift();
+      if(!r) return;
+      const gun = Math.floor((Date.now()-staleRef(r))/86400000);
+      const o = buildOverlay(`
+        <h2>Eski kayıt</h2>
+        <p class="hint"><b>${escapeHtml(r.lokalAdi||'(adsız)')}</b> ${r.santralAdi?'· '+escapeHtml(r.santralAdi):''} ${r.sahaDolabiNo?'/ SD'+escapeHtml(r.sahaDolabiNo):''}<br>
+        Son kayıt: ${fmtDate(r.savedAt)} (${gun} gün önce)<br>KMZ üretildi: ${fmtDate(r.kmzAt)}</p>
+        <p>Bu oturum ${STALE_DAYS} günden eski, KMZ'yi gönderdiniz mi?</p>
+        <div class="btn-row">
+          <button class="btn btn-danger" id="st-del">Sil</button>
+          <button class="btn btn-primary" id="st-keep">Sakla</button>
+        </div>`, false);
+      o.querySelector('#st-keep').onclick = ()=>{ r.keepAt = Date.now(); persist(); closeOverlay(o); next(); };
+      o.querySelector('#st-del').onclick = ()=>{
+        closeOverlay(o);
+        deleteRecord(r.id);
+        next();
+      };
+    })();
+  }
+
+  function deleteRecord(id){
+    const wasActive = state.id===id;
+    records = records.filter(r=>r.id!==id);
+    if(wasActive){
+      if(records.length){
+        state = records.slice().sort((a,b)=>b.savedAt-a.savedAt)[0];
+        mode=null; cableFirstNode=null;
+        persist(); updateLokalBadge(); renderAll(); fitToState();
+      } else {
+        state = emptyState(); persist(); renderAll(); updateLokalBadge();
+        askLokalAdi(true);
+      }
+    } else persist();
+  }
+
+  function openRecords(){
+    if(state.lokalAdi) save();
+    const list = records.slice().sort((a,b)=>b.savedAt-a.savedAt);
+    const rows = list.map(r=>{
+      const act = r.id===state.id;
+      return `<div class="rec-row" data-id="${r.id}" style="border:1px solid ${act?'#1f4e78':'#ddd'};border-radius:8px;padding:8px 10px;margin-bottom:8px;${act?'background:#eef4fa;':''}">
+        <div><b>${escapeHtml(r.lokalAdi||'(adsız)')}</b>${act?' <span style="color:#1f4e78;font-size:11px;">(açık)</span>':''}</div>
+        <div style="font-size:12px;color:#555;">${escapeHtml(r.santralAdi||'-')} / SD${escapeHtml(r.sahaDolabiNo||'-')} · ${r.nodes.length} nokta · ${r.edges.length} hat</div>
+        <div style="font-size:12px;color:#555;">Son kayıt: ${fmtDate(r.savedAt)}<br>KMZ üretildi: ${fmtDate(r.kmzAt)}</div>
+        <div class="btn-row" style="margin-top:6px;">
+          ${act?'':'<button class="btn btn-primary rec-open">Aç</button>'}
+          <button class="btn btn-danger rec-del">Sil</button>
+        </div>
+      </div>`;
+    }).join('') || '<p class="hint">Kayıt yok.</p>';
+    const o = buildOverlay(`
+      <h2>Kayıtlarım</h2>
+      <p class="hint">Bir kaydı açıp kaldığınız yerden devam edebilir, değişiklikten sonra KMZ'yi yeniden üretebilirsiniz.</p>
+      <div style="max-height:55vh;overflow:auto;">${rows}</div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="rc-close">Kapat</button>
+        <button class="btn btn-primary" id="rc-new">+ Yeni Lokal</button>
+      </div>`, true);
+    o.querySelector('#rc-close').onclick = ()=>closeOverlay(o);
+    o.querySelector('#rc-new').onclick = ()=>{ closeOverlay(o); startNewRecord(); };
+    o.querySelectorAll('.rec-row').forEach(row=>{
+      const id = row.getAttribute('data-id');
+      const ob = row.querySelector('.rec-open');
+      if(ob) ob.onclick = ()=>{ const r=records.find(x=>x.id===id); closeOverlay(o); if(r){ switchTo(r); toast("Kayıt açıldı: "+r.lokalAdi); } };
+      row.querySelector('.rec-del').onclick = ()=>{
+        const r=records.find(x=>x.id===id);
+        const c = buildOverlay(`<h2>Kaydı sil?</h2><p class="hint"><b>${escapeHtml(r.lokalAdi)}</b> kaydı kalıcı olarak silinecek. Önce KMZ ürettiğinizden emin olun.</p>
+          <div class="btn-row"><button class="btn btn-secondary" id="d-no">Vazgeç</button><button class="btn btn-danger" id="d-yes">Sil</button></div>`);
+        c.querySelector('#d-no').onclick = ()=>closeOverlay(c);
+        c.querySelector('#d-yes').onclick = ()=>{ closeOverlay(c); closeOverlay(o); deleteRecord(id); openRecords(); };
+      };
+    });
   }
 
   function openSessionMenu(){
@@ -900,40 +1118,31 @@
       <div class="field"><b>Lokal:</b> ${escapeHtml(state.lokalAdi||'-')}</div>
       <div class="field"><b>Santral:</b> ${escapeHtml(state.santralAdi||'-')} &nbsp; <b>SD:</b> ${escapeHtml(state.sahaDolabiNo||'-')}</div>
       <div class="field">Direk/Bina: ${state.nodes.length} · Kutu: ${state.nodes.filter(n=>n.box).length} · Hat: ${state.edges.length}</div>
-      <div class="field" style="color:var(--gray);">Sürüm: v${APP_VERSION}</div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="sm-rename">Lokal/Santral/SD Değiştir</button>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="sm-changelog">Sürüm Notları</button>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-danger" id="sm-reset">Oturumu Sıfırla (Yeni Lokal)</button>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="sm-close">Kapat</button>
-      </div>
+      <div class="field" style="color:var(--gray);">Son kayıt: ${fmtDate(state.savedAt)}<br>KMZ üretildi: ${fmtDate(state.kmzAt)}</div>
+      <div class="field" style="color:var(--gray);">Hazırlayan: ${escapeHtml(getUser()||'-')}<br>Sürüm: v${APP_VERSION}</div>
+      <div class="btn-row"><button class="btn btn-primary" id="sm-records">Kayıtlarım (${records.length})</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-new">+ Yeni Lokal</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-env">Kutu Abone Envanteri</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-envjson">Envanteri JSON Aktar</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-rename">Lokal/Santral/SD Değiştir</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-user">Ad Soyad Değiştir</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-changelog">Sürüm Notları</button></div>
+      <div class="btn-row"><button class="btn btn-secondary" id="sm-close">Kapat</button></div>
     `);
+    overlay.querySelector('#sm-records').onclick = ()=>{ closeOverlay(overlay); openRecords(); };
+    overlay.querySelector('#sm-new').onclick = ()=>{ closeOverlay(overlay); startNewRecord(); };
+    overlay.querySelector('#sm-env').onclick = ()=>{ closeOverlay(overlay); openEnvanterList(); };
+    overlay.querySelector('#sm-envjson').onclick = ()=>{ closeOverlay(overlay); exportEnvanterJSON(); };
     overlay.querySelector('#sm-rename').onclick = ()=>{ closeOverlay(overlay); askLokalAdi(false); };
+    overlay.querySelector('#sm-user').onclick = ()=>{ closeOverlay(overlay); askUserName(false); };
     overlay.querySelector('#sm-changelog').onclick = ()=>{ closeOverlay(overlay); openChangelog(); };
-    overlay.querySelector('#sm-reset').onclick = ()=>{
-      closeOverlay(overlay);
-      const c = buildOverlay(`
-        <h2>Emin misiniz?</h2>
-        <p class="hint">Mevcut oturumdaki tüm işaretlemeler silinecek. Önce KMZ olarak dışa aktardığınızdan emin olun.</p>
-        <div class="btn-row">
-          <button class="btn btn-secondary" id="rc-cancel">Vazgeç</button>
-          <button class="btn btn-danger" id="rc-ok">Sıfırla</button>
-        </div>`);
-      c.querySelector('#rc-cancel').onclick = ()=>closeOverlay(c);
-      c.querySelector('#rc-ok').onclick = ()=>{
-        closeOverlay(c);
-        state = {lokalAdi:"", santralAdi:"", sahaDolabiNo:"", nodes:[], edges:[], nextId:1};
-        save(); updateLokalBadge(); renderAll();
-        askLokalAdi(true);
-      };
-    };
     overlay.querySelector('#sm-close').onclick = ()=>closeOverlay(overlay);
+  }
+
+  function registerSW(){
+    if('serviceWorker' in navigator && location.protocol.startsWith('http')){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    }
   }
 
   function openChangelog(){
@@ -957,6 +1166,30 @@
   // ---------- KMZ export ----------
   function xmlEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  function distM(a,b){
+    const R=6371000, rad=Math.PI/180;
+    const dLat=(b.lat-a.lat)*rad, dLng=(b.lng-a.lng)*rad;
+    const h=Math.sin(dLat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)**2;
+    return 2*R*Math.asin(Math.sqrt(h));
+  }
+  function kmzOzet(){
+    const o={direk:0,bina:0,kutu:0,splitter:0,tampon:0,hat:0,kablo:0,bakir:0,fiber:0,uzunluk:0};
+    state.nodes.forEach(n=>{
+      if(n.type==='direk') o.direk++; else o.bina++;
+      if(n.box){ if(n.box.cableType==='fiber') o.splitter++; else o.kutu++; if(n.box.parentBoxNodeId) o.tampon++; }
+    });
+    state.edges.forEach(e=>{
+      const a=state.nodes.find(n=>n.id===e.fromId), b=state.nodes.find(n=>n.id===e.toId);
+      if(!a||!b) return;
+      o.hat++;
+      const d=distM(a,b);
+      e.cables.forEach(c=>{ o.kablo++; if(c.cableType==='fiber') o.fiber++; else o.bakir++; });
+      o.uzunluk+=d;
+    });
+    o.uzunluk=Math.round(o.uzunluk);
+    o.toplam=o.direk+o.bina+o.kutu+o.splitter+o.hat;
+    return o;
+  }
   function buildKML(){
     const direkPMs = [], binaPMs = [], kutuPMs = [], hatPMs = [];
     state.nodes.forEach(n=>{
@@ -1002,17 +1235,35 @@
     });
     const now = new Date();
     const tarih = now.toLocaleString('tr-TR');
+    const sayim = kmzOzet();
     const docExt = `<ExtendedData>
       <Data name="Santral"><value>${xmlEsc(state.santralAdi)}</value></Data>
       <Data name="SahaDolabi"><value>${xmlEsc(state.sahaDolabiNo)}</value></Data>
       <Data name="Versiyon"><value>${xmlEsc(APP_VERSION)}</value></Data>
       <Data name="OlusturmaTarihi"><value>${xmlEsc(tarih)}</value></Data>
+      <Data name="KayitNo"><value>${xmlEsc(state.id)}</value></Data>
+      <Data name="KmzUretimNo"><value>${xmlEsc(state.kmzCount||1)}</value></Data>
+      <Data name="DirekSayisi"><value>${sayim.direk}</value></Data>
+      <Data name="BinaNoktasiSayisi"><value>${sayim.bina}</value></Data>
+      <Data name="KutuSayisi"><value>${sayim.kutu}</value></Data>
+      <Data name="SplitterSayisi"><value>${sayim.splitter}</value></Data>
+      <Data name="TamponKutuSayisi"><value>${sayim.tampon}</value></Data>
+      <Data name="HatSayisi"><value>${sayim.hat}</value></Data>
+      <Data name="KabloSayisi"><value>${sayim.kablo}</value></Data>
+      <Data name="BakirKabloSayisi"><value>${sayim.bakir}</value></Data>
+      <Data name="FiberKabloSayisi"><value>${sayim.fiber}</value></Data>
+      <Data name="ToplamHatUzunlukM"><value>${sayim.uzunluk}</value></Data>
+      <Data name="ToplamKontrolBirimi"><value>${sayim.toplam}</value></Data>
+      <Data name="HazirlayanAdSoyad"><value>${xmlEsc(getUser())}</value></Data>
+      <Data name="KurulumNo"><value>${xmlEsc(getInstallId())}</value></Data>
+      <Data name="Cihaz"><value>${xmlEsc(deviceSummary())}</value></Data>
+      <Data name="KayitIlkOlusturma"><value>${xmlEsc(fmtDate(state.createdAt))}</value></Data>
     </ExtendedData>`;
     return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
 <name>${xmlEsc(state.lokalAdi||'CBS Guzergah')}</name>
-<description>Santral: ${xmlEsc(state.santralAdi)} / SD: ${xmlEsc(state.sahaDolabiNo)} — v${xmlEsc(APP_VERSION)} — ${xmlEsc(tarih)}</description>
+<description>Santral: ${xmlEsc(state.santralAdi)} / SD: ${xmlEsc(state.sahaDolabiNo)} — Hazirlayan: ${xmlEsc(getUser())} — v${xmlEsc(APP_VERSION)} — ${xmlEsc(tarih)}</description>
 ${docExt}
 <Folder><name>Direkler</name>${direkPMs.join('')}</Folder>
 <Folder><name>Bina Noktalari (Blok Isleme)</name>${binaPMs.join('')}</Folder>
@@ -1024,6 +1275,8 @@ ${docExt}
 
   async function exportKMZ(){
     if(!state.nodes.length){ toast("Önce en az bir nokta ekleyin"); return; }
+    if(!getUser()){ askUserName(false, exportKMZ); return; }
+    state.kmzAt = Date.now(); state.kmzCount = (state.kmzCount||0)+1; save();
     const kml = buildKML();
     const zip = new JSZip();
     zip.file("doc.kml", kml);
@@ -1051,6 +1304,160 @@ ${docExt}
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast("KMZ indirildi: " + filename);
+  }
+
+  // ---------- Kutu Abone Envanteri ----------
+  const PORT_DURUM = {bos:'Boş', dolu:'Dolu', ariza:'Arızalı', rezerve:'Rezerve'};
+  const PORT_RENK = {bos:'#bbb', dolu:'#2e7d32', ariza:'#c0392b', rezerve:'#b45309'};
+  function portCount(box){
+    const c = String(box.capacity==null?'':box.capacity).trim();
+    let n = NaN;
+    if(c.includes('/')) n = parseInt(c.split('/')[1],10); else n = parseInt(c,10);
+    if(!isFinite(n) || n<1) return 0;
+    return Math.min(n, 300);
+  }
+  function portData(box, no){
+    if(!box.ports) box.ports = {};
+    return box.ports[no] || null;
+  }
+  function envSummary(box){
+    const n = portCount(box);
+    const o = {toplam:n, dolu:0, ariza:0, rezerve:0, bos:0, girilen:0};
+    for(let i=1;i<=n;i++){
+      const p = portData(box,i);
+      const d = p && p.d ? p.d : 'bos';
+      if(p && (p.d || p.hs || p.not)) o.girilen++;
+      o[d]++;
+    }
+    return o;
+  }
+  function envTouched(box){ return box.ports && Object.keys(box.ports).length>0; }
+  function boxTitle(node){
+    const b=node.box, isF=b.cableType==='fiber';
+    return (isF?'Splitter':'Kutu') + (b.name? ' — '+b.name : '');
+  }
+
+  function openEnvanter(node, backToList){
+    const box = node.box;
+    const n = portCount(box);
+    const isF = box.cableType==='fiber';
+    const rows = [];
+    for(let i=1;i<=n;i++){
+      const p = portData(box,i) || {};
+      const d = p.d || 'bos';
+      rows.push(`<div class="env-row" data-no="${i}" style="border-left:4px solid ${PORT_RENK[d]};background:#fafafa;border-radius:6px;padding:6px 8px;margin-bottom:6px;">
+        <div style="display:flex;gap:6px;align-items:center;">
+          <b style="min-width:42px;">Port ${i}</b>
+          <select class="env-d" style="flex:1;">${Object.keys(PORT_DURUM).map(k=>`<option value="${k}" ${d===k?'selected':''}>${PORT_DURUM[k]}</option>`).join('')}</select>
+        </div>
+        <input type="text" class="env-hs" inputmode="numeric" maxlength="20" placeholder="Hizmet no" value="${escapeHtml(p.hs||'')}" style="width:100%;margin-top:4px;">
+        <input type="text" class="env-not" maxlength="200" placeholder="Not (arıza vb.)" value="${escapeHtml(p.not||'')}" style="width:100%;margin-top:4px;">
+      </div>`);
+    }
+    const fixed = box.env && box.env.fixed;
+    const o = buildOverlay(`
+      <h2>Abone Envanteri</h2>
+      <div class="field"><b>${escapeHtml(boxTitle(node))}</b><br>
+        <span style="font-size:12px;color:#555;">${isF?'Splitter':'Kutu'} kapasitesi: ${escapeHtml(String(box.capacity))} · ${n} port</span></div>
+      <div id="env-sum" class="field" style="font-size:13px;"></div>
+      <p class="hint">Yalnızca abone <b>hizmet numarasını</b> girin. Ad, telefon veya adres yazmayın.</p>
+      <div style="max-height:48vh;overflow:auto;">${n? rows.join('') : '<p class="hint">Bu kapasiteden port sayısı çıkarılamadı. Kutu bilgisini Düzenle ile sayısal bir kapasiteye getirin.</p>'}</div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="env-close">Kapat</button>
+      </div>`, false);
+
+    function refresh(){
+      const s2 = envSummary(box);
+      o.querySelector('#env-sum').innerHTML = `<b>${s2.dolu}</b> dolu · <b>${s2.bos}</b> boş · <b style="color:#c0392b;">${s2.ariza}</b> arızalı · <b>${s2.rezerve}</b> rezerve`;
+    }
+    refresh();
+    o.querySelectorAll('.env-row').forEach(row=>{
+      const no = row.getAttribute('data-no');
+      const sel=row.querySelector('.env-d'), hs=row.querySelector('.env-hs'), nt=row.querySelector('.env-not');
+      function upd(){
+        const d = sel.value==='bos' ? '' : sel.value;
+        const h = hs.value.trim(), t = nt.value.trim();
+        if(!d && !h && !t){ if(box.ports) delete box.ports[no]; }
+        else { if(!box.ports) box.ports={}; box.ports[no] = {d:d, hs:h, not:t}; }
+        row.style.borderLeftColor = PORT_RENK[sel.value];
+        save(); refresh();
+      }
+      sel.onchange = upd; hs.oninput = upd; nt.oninput = upd;
+    });
+    o.querySelector('#env-close').onclick = ()=>{ closeOverlay(o); if(backToList) openEnvanterList(); };
+  }
+
+  function openEnvanterList(){
+    const boxes = state.nodes.filter(n=>n.box);
+    const rows = boxes.map(n=>{
+      const s2 = envSummary(n.box);
+      return `<div class="env-item" data-id="${n.id}" style="border:1px solid #ddd;border-radius:8px;padding:8px 10px;margin-bottom:8px;">
+        <div><b>${escapeHtml(boxTitle(n))}</b> <span style="font-size:12px;color:#555;">(${escapeHtml(String(n.box.capacity))})</span></div>
+        <div style="font-size:12px;color:#555;">${s2.toplam? `${s2.dolu} dolu · ${s2.bos} boş · ${s2.ariza} arızalı · ${s2.rezerve} rezerve` : 'Port sayısı belirsiz'}</div>
+        <div style="font-size:12px;">${envTouched(n.box)?'<span style="color:#2e7d32;">Bilgi girildi</span>':'<span style="color:#888;">Girilmedi</span>'}</div>
+        <div class="btn-row" style="margin-top:6px;"><button class="btn btn-primary env-open">Aç</button></div>
+      </div>`;
+    }).join('') || '<p class="hint">Henüz kutu/splitter yok. Önce haritada bir noktaya kutu ekleyin.</p>';
+    const o = buildOverlay(`
+      <h2>Kutu Abone Envanteri</h2>
+      <p class="hint">Her kutu için doldurmak zorunlu değildir; yalnızca envanteri kontrol ettiğiniz kutuları girin.</p>
+      <div style="max-height:55vh;overflow:auto;">${rows}</div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="el-close">Kapat</button>
+        <button class="btn btn-primary" id="el-json">JSON Aktar</button>
+      </div>`, true);
+    o.querySelector('#el-close').onclick = ()=>closeOverlay(o);
+    o.querySelector('#el-json').onclick = ()=>{ closeOverlay(o); exportEnvanterJSON(); };
+    o.querySelectorAll('.env-item').forEach(el=>{
+      el.querySelector('.env-open').onclick = ()=>{
+        const node = state.nodes.find(x=>x.id===el.getAttribute('data-id'));
+        closeOverlay(o); if(node) openEnvanter(node, true);
+      };
+    });
+  }
+
+  async function exportEnvanterJSON(){
+    const list = state.nodes.filter(n=>n.box && envTouched(n.box));
+    if(!list.length){ toast("Girilmiş envanter bilgisi yok"); return; }
+    if(!getUser()){ askUserName(false, exportEnvanterJSON); return; }
+    const now = new Date();
+    const kutular = list.map(n=>{
+      const b=n.box, s2=envSummary(b), isF=b.cableType==='fiber';
+      const parent = b.parentBoxNodeId ? state.nodes.find(x=>x.id===b.parentBoxNodeId) : null;
+      const portlar = [];
+      for(let i=1;i<=s2.toplam;i++){
+        const p=portData(b,i);
+        if(p) portlar.push({no:i, durum:PORT_DURUM[p.d||'bos'], hizmetNo:p.hs||'', not:p.not||''});
+      }
+      return {
+        kutuNo:n.id, kutuAdi:b.name||'', tur:isF?'Splitter':'Kutu', kapasite:String(b.capacity),
+        bagliNokta:labelOf(n), tamponMu:!!b.parentBoxNodeId,
+        beslendigiKutu: parent&&parent.box ? (parent.box.name||'') : '',
+        konum:{lat:b.lat!=null?b.lat:n.lat, lng:b.lng!=null?b.lng:n.lng},
+        portSayisi:s2.toplam, dolu:s2.dolu, bos:s2.bos, arizali:s2.ariza, rezerve:s2.rezerve,
+        portlar:portlar
+      };
+    });
+    const data = {
+      tur:'kutu-abone-envanter', surum:1, uygulamaSurumu:APP_VERSION,
+      kayitNo:state.id, lokal:state.lokalAdi, santral:state.santralAdi, sahaDolabi:state.sahaDolabiNo,
+      hazirlayanAdSoyad:getUser(), kurulumNo:getInstallId(), uretimTarihi:now.toISOString(),
+      ozet:{kutuSayisi:kutular.length, toplamPort:kutular.reduce((a,k)=>a+k.portSayisi,0), doluPort:kutular.reduce((a,k)=>a+k.dolu,0), arizaliPort:kutular.reduce((a,k)=>a+k.arizali,0)},
+      kutular:kutular
+    };
+    const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+    const stamp = now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')+"_"+String(now.getHours()).padStart(2,'0')+String(now.getMinutes()).padStart(2,'0');
+    const safe = (v)=> (v||'').toString().trim().replace(/[^a-zA-Z0-9ığüşöçİĞÜŞÖÇ_-]/g,'_') || 'NA';
+    const filename = `${safe(state.santralAdi)}-${safe(state.sahaDolabiNo)}-${safe(state.lokalAdi)}-${stamp}_envanter_v${APP_VERSION}.json`;
+    const file = new File([blob], filename, {type:'application/json'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:filename}); toast("Paylaşıldı"); return; }catch(e){}
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("JSON indirildi: "+filename);
   }
 
   // ---------- Modal helper ----------
