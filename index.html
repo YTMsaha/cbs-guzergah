@@ -120,8 +120,9 @@
   const BAKIR_CAP_LABELS = {10:"10'luk",20:"20'lik",30:"30'luk",50:"50'lik",100:"100'lük",150:"150'lik"};
   const CAP_HAT_FIBER = [{v:6,label:"6'lık"},{v:12,label:"12'lik"},{v:24,label:"24'lük"},{v:48,label:"48'lik"}];
 
-  const APP_VERSION = "1.8.3";
+  const APP_VERSION = "1.8.4";
   const CHANGELOG = [
+    {v:"1.8.4", d:"2026-11-20", notes:["Yeni Lokal açılırken aynı Santral/SD/Lokal adıyla kayıt zaten varsa 'Bu lokalde kayıt var, onu açıp devam etmek ister misiniz?' diye soruluyor (Mevcut Kaydı Aç / Yeni Kayıt Aç)"]},
     {v:"1.8.3", d:"2026-11-20", notes:["Envanter penceresindeki 'Envanter Düzeltildi' işareti kaldırıldı: düzeltme CBS/Backoffice ekibi tarafından CBS kontrol uygulamasında işaretlenecek","Envanter JSON'una her kutu için sabit KutuNo eklendi (aynı lokalin envanteri tekrar gönderilse de kontrol uygulaması hangi kutu olduğunu tanıyabilsin diye)"]},
     {v:"1.8.2", d:"2026-11-20", notes:["Kutu Abone Envanteri: kutu/splitter popup'ındaki 'Abone Envanteri' butonu (ve ⋮ menüsündeki 'Kutu Abone Envanteri' listesi) ayrı bir pencere açar; pencere kutunun kapasitesi kadar port satırı gösterir","Her port için durum (Boş / Dolu / Arızalı / Rezerve), abone hizmet numarası ve not girilir. Abone adı/telefon/adres tutulmaz","Kutu için 'Envanter düzeltildi' işareti: işaretleyen kişi ve tarih kaydedilir (takip amaçlı), geri alınabilir","Envanter bilgisi KMZ'ye girmez; ⋮ menüsünden 'Envanteri JSON Aktar' ile ayrı dosya olarak alınır (CBS kontrol uygulamasında okunacak)","KMZ'den NoktaNo / KutuNo / KabloNo alanları kaldırıldı (gereksizdi); KayitNo, KmzUretimNo ve iş büyüklüğü adetleri korunuyor"]},
     {v:"1.8.1", d:"2026-11-20", notes:["KMZ'ye iş büyüklüğü özeti eklendi: direk, bina noktası, kutu, splitter, tampon kutu, hat ve kablo adetleri ile toplam hat uzunluğu (metre) — CBS kontrol uygulaması iş yükünü ve ilerlemeyi bu alanlardan hesaplayacak","KMZ'ye KayitNo (kayıt kimliği) ve KmzUretimNo eklendi: aynı lokalin düzeltilip tekrar gönderilen KMZ'leri çift sayılmadan tek iş olarak izlenebilecek","Her direk, bina noktası, kutu ve kablo işaretine ayrı NoktaNo / KutuNo / KabloNo eklendi (iş bazında 'kontrol edildi' işaretleme için)"]},
@@ -974,12 +975,33 @@
     overlay.querySelector('#lok-ok').onclick = ()=>{
       const v = overlay.querySelector('#lok-input').value.trim();
       if(!v){ toast("Lütfen bir lokal adı girin"); return; }
-      state.lokalAdi = v;
-      state.santralAdi = santralInput.value.trim();
-      state.sahaDolabiNo = sdInput.value.trim();
-      save(); updateLokalBadge();
-      closeOverlay(overlay);
-      if(isFirst && !onCancel) checkStale();
+      const san = santralInput.value.trim(), sd = sdInput.value.trim();
+      function apply(){
+        state.lokalAdi = v;
+        state.santralAdi = san;
+        state.sahaDolabiNo = sd;
+        save(); updateLokalBadge();
+        closeOverlay(overlay);
+        if(isFirst && !onCancel) checkStale();
+      }
+      const norm = x=>(x||'').trim().toLocaleUpperCase('tr');
+      const isNew = isFirst || !!onCancel;
+      const dup = isNew ? records.find(r=>r.id!==state.id && norm(r.lokalAdi)===norm(v) && norm(r.santralAdi)===norm(san) && norm(r.sahaDolabiNo)===norm(sd)) : null;
+      if(dup){
+        const d = buildOverlay(`
+          <h2>Bu lokalde kayıt var</h2>
+          <p class="hint"><b>${escapeHtml(dup.lokalAdi)}</b> · ${escapeHtml(dup.santralAdi||'-')} / SD${escapeHtml(dup.sahaDolabiNo||'-')}<br>
+          Son kayıt: ${fmtDate(dup.savedAt)} · ${dup.nodes.length} nokta, ${dup.edges.length} hat</p>
+          <p>Onu açıp kaldığınız yerden devam etmek ister misiniz?</p>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="dp-new">Yeni Kayıt Aç</button>
+            <button class="btn btn-primary" id="dp-open">Mevcut Kaydı Aç</button>
+          </div>`, false);
+        d.querySelector('#dp-new').onclick = ()=>{ closeOverlay(d); apply(); };
+        d.querySelector('#dp-open').onclick = ()=>{ closeOverlay(d); closeOverlay(overlay); switchTo(dup); toast("Kayıt açıldı: "+dup.lokalAdi); };
+        return;
+      }
+      apply();
     };
   }
 
